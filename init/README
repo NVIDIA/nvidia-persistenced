@@ -1,0 +1,51 @@
+The scripts in this directory and its subdirectories provide examples of how
+to install the NVIDIA Persistence Daemon to run during the system startup
+sequence.
+
+The install.sh script attempts to find an init system it understands, and if
+it does, will attempt to install the daemon for that init system. While this
+script understands a few of the major init systems, it is not guaranteed to
+support all systems that the NVIDIA GPU driver can be installed on, and
+is not guaranteed to correctly install the NVIDIA Persistence Daemon for those
+systems that it thinks it understands.
+
+End users or package maintainers may use the scripts in the following ways:
+
+(1) Invoke install.sh to install the proper init script for the target system,
+    if supported.
+(2) Tailor the install.sh script to correctly install the proper init script
+    for the target system, if not supported by the original install.sh script.
+(3) Tailor the init system-specific configuration files or scripts found in
+    the subdirectories of this directory, and install them via either the
+    install.sh script or another mechanism.
+
+The files found in the subdirectories of this directory are template files,
+which are processed by the install.sh script to fill in the user under which
+the daemon should run (see install.sh -h for more details) prior to
+installation. The final installable configuration files and scripts are
+created from these template files for every init system (in their respective
+subdirectories) when install.sh is run with correct arguments, regardless of
+whether or not a supported init system is detected.
+
+The final installable configuration files and scripts are simply copies of
+the template files with the "__USER__" string replaced with the actual
+username.
+
+The install.sh script will check for init systems in the following order:
+
+(1) systemd
+(2) Upstart
+(3) System V
+
+Since Upstart provides backwards compatibility with System V init, if the
+install.sh script fails to install for Upstart, try installing instead with
+the 'sysv' argument. This will force the install.sh script to only attempt
+installation of the System V init script.
+
+Finally, the install.sh script provides some other convenience functions,
+such as:
+
+(1) Install the daemon to run as a specific user
+(2) Install the config file/script to a non-standard directory
+(3) Uninstallation
+
