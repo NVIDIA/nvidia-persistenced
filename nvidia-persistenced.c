@@ -466,19 +466,12 @@ static NvPdStatus setup_devices(NvPersistenceMode default_mode)
 static NvPdStatus setup_rpc()
 {
     register SVCXPRT *transp;
-    mode_t prev_mask;
 
     /*
      * We should remove any stale sockets on the filesystem before attempting
      * to create it again.
      */
     (void)unlink(NVPD_SOCKET_PATH);
-
-    /*
-     * Make sure we create the socket so that only user and group have write
-     * permissions.
-     */
-    prev_mask = umask(0002);
 
     /* Create the socket manually so we can shut it down later */
     socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -493,9 +486,6 @@ static NvPdStatus setup_rpc()
         syslog(LOG_ERR, "Failed to create RPC service");
         return NVPD_ERR_RPC;
     }
-
-    /* Return to the previous umask now that the socket has been created. */
-    (void)umask(prev_mask);
 
     if (!svc_register(transp, NVPD_PROG, VersionOne, nvpd_prog_1, 0)) {
         syslog(LOG_ERR, "Failed to register RPC service");
