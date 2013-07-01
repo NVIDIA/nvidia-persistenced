@@ -62,6 +62,7 @@ typedef struct
  * Static Variables
  */
 static void *libnvidia_cfg = NULL;
+static pid_t pid = 0;
 static int pid_fd = -1;
 static int socket_fd = -1;
 static NvPdDevice *devices = NULL;
@@ -346,7 +347,7 @@ static void shutdown_daemon(int status)
         }
     }
 
-    syslog(LOG_NOTICE, "Shutdown.");
+    syslog(LOG_NOTICE, "Shutdown (%d)", pid);
     closelog();
 
     exit(status);
@@ -404,6 +405,7 @@ static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path)
                                   "nvCfgDetachDevice");
 
     if (status != 0) {
+        /* Missing symbols are already called out by load_nvidia_cfg_sym(). */
         return NVPD_ERR_DRIVER;
     }
 
@@ -416,23 +418,28 @@ static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path)
  */
 static NvPdStatus setup_devices(NvPersistenceMode default_mode)
 {
-    NvPdStatus status = NVPD_SUCCESS;
     NvCfgBool success;
     NvCfgPciDevice *nv_cfg_devices;
     int i;
 
     success = nv_cfg_api.get_pci_devices(&num_devices, &nv_cfg_devices);
     if (!success) {
+        syslog(LOG_ERR, "Failed to query NVIDIA devices. Please ensure that "
+                        "the NVIDIA device files (/dev/nvidia*) exist, and "
+                        "that user %u has read and write permissions for "
+                        "those files.", getuid());
         return NVPD_ERR_DRIVER;
     }
 
     if (num_devices < 1) {
+        syslog(LOG_ERR, "Unable to find any NVIDIA devices");
         return NVPD_ERR_DEVICE_NOT_FOUND;
     }
 
     /* Allocate our own device table */
     devices = (NvPdDevice *)malloc(num_devices * sizeof(NvPdDevice));
     if (devices == NULL) {
+        syslog(LOG_ERR, "Failed to create device table");
         return NVPD_ERR_INSUFFICIENT_RESOURCES;
     }
 
@@ -445,6 +452,11 @@ static NvPdStatus setup_devices(NvPersistenceMode default_mode)
         /* nvidia-cfg doesn't fill in the PCI function field, assume 0 */
         devices[i].pci_info.function = 0;
         devices[i].mode = NV_PERSISTENCE_MODE_DISABLED;
+
+        if (verbose) {
+            syslog_device(&devices[i], LOG_DEBUG, "registered");
+        }
+
         if (default_mode != NV_PERSISTENCE_MODE_DISABLED) {
             (void) set_device_mode(&devices[i], default_mode);
         }
@@ -456,7 +468,7 @@ static NvPdStatus setup_devices(NvPersistenceMode default_mode)
      */
     free(nv_cfg_devices);
 
-    return status;
+    return NVPD_SUCCESS;
 }
 
 /*
@@ -492,6 +504,10 @@ static NvPdStatus setup_rpc()
         return NVPD_ERR_RPC;
     }
 
+    if (verbose) {
+        syslog(LOG_INFO, "Local RPC service initialized");
+    }
+
     return NVPD_SUCCESS;
 }
 
@@ -512,7 +528,7 @@ static void signal_handler(int signal)
         shutdown_daemon(EXIT_SUCCESS);
         break;
     default:
-        syslog(LOG_WARNING, "Unhandled signal %d received",
+        syslog(LOG_WARNING, "Unable to process signal %d",
                signal);
         break;
 
@@ -525,7 +541,6 @@ static void signal_handler(int signal)
  */
 static void daemonize(uid_t uid, gid_t gid)
 {
-    pid_t pid = 0;
     char pid_str[10];
     struct sigaction signal_action;
     sigset_t signal_set;
@@ -560,6 +575,9 @@ static void daemonize(uid_t uid, gid_t gid)
         exit(EXIT_SUCCESS);
     }
 
+    /* Save off the new pid for logging */
+    pid = getpid();
+
     /* Reset default file permissions */
     umask(0);
 
@@ -585,8 +603,9 @@ static void daemonize(uid_t uid, gid_t gid)
 
     /* Setup syslog connection */
     openlog(NVPD_DAEMON_NAME, 0, LOG_DAEMON);
-
-    syslog(LOG_NOTICE, "Started.");
+    if (verbose) {
+        syslog(LOG_INFO, "Verbose syslog connection opened");
+    }
 
     /* Go somewhere that we won't be unmounted */
     if (chdir("/") < 0) {
@@ -602,6 +621,11 @@ static void daemonize(uid_t uid, gid_t gid)
         if (errno != EEXIST) {
             syslog(LOG_WARNING, "Failed to create directory %s: %s",
                    NVPD_VAR_RUNTIME_DATA_PATH, strerror(errno));
+        }
+
+        if (verbose) {
+            syslog(LOG_INFO, "Directory %s will not be removed on exit",
+                   NVPD_VAR_RUNTIME_DATA_PATH);
         }
     } else {
         /* 
@@ -634,13 +658,18 @@ static void daemonize(uid_t uid, gid_t gid)
             status = EXIT_FAILURE;
             goto done;
         }
+
+        if (verbose) {
+            syslog(LOG_INFO, "Now running with user ID %d and group ID %d",
+                   uid, gid);
+        }
     }
 
     /*
      * Check that the supplied runtime data path is writable by the daemon.
      */
     if (access(NVPD_VAR_RUNTIME_DATA_PATH, R_OK | W_OK) < 0) {
-        syslog(LOG_WARNING, "Cannot access %s: %s",
+        syslog(LOG_ERR, "Unable to access %s: %s",
                NVPD_VAR_RUNTIME_DATA_PATH, strerror(errno));
         status = EXIT_FAILURE;
         goto done;
@@ -667,8 +696,9 @@ static void daemonize(uid_t uid, gid_t gid)
 done:
     if (status == EXIT_SUCCESS) {
         /* Update the PID file with the current process ID */
-        sprintf(pid_str, "%d\n", getpid());
+        sprintf(pid_str, "%d\n", pid);
         write(pid_fd, pid_str, strlen(pid_str));
+        syslog(LOG_NOTICE, "Started (%d)", pid);
     }
     else {
         /*
@@ -707,6 +737,7 @@ int main(int argc, char* argv[])
     svc_run();
 
     /* We should never return from svc_run() in a non-error scenario */
+    syslog(LOG_ERR, "Failed to start local RPC service");
     shutdown_daemon(EXIT_FAILURE);
 
     return 0;

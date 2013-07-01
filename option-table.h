@@ -55,7 +55,8 @@ static const NVGetoptOption __options[] = {
       "unexpected events, as well as startup and shutdown notices. "
       "Specifying this flag will cause nvidia-persistenced to also print "
       "notices to syslog on state transitions, such as when persistence mode "
-      "is enabled or disabled." },
+      "is enabled or disabled, and informational messages on startup and "
+      "exit." },
 
     { "user",
       'u',
