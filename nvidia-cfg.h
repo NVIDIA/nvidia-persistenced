@@ -297,6 +297,18 @@ NvCfgBool nvCfgGetProductName(NvCfgDeviceHandle handle, char **name);
 
 
 /*
+ * nvCfgGetDeviceUUID() - return an allocated string containing the
+ * global unique identifier of the specified NVIDIA device.  It is the caller's
+ * responsibility to free the returned string.  On success, NVCFG_TRUE
+ * will be returned and uuid will be assigned.  On failure,
+ * NVCFG_FALSE will be returned.
+ */
+
+NvCfgBool nvCfgGetDeviceUUID(NvCfgDeviceHandle handle, char **uuid);
+
+
+
+/*
  * nvCfgGetDisplayDevices() - retrieve a bitmask describing the
  * currently connected display devices: this "display device mask" is
  * an unsigned 32 bit value that identifies one or more display
