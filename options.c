@@ -49,7 +49,7 @@ extern const char *pNV_ID;
 static void print_version(void)
 {
     fmtout("");
-    fmtout(pNV_ID);
+    fmtout("%s", pNV_ID);
     fmtout("");
     fmtoutp(TAB, "The NVIDIA Persistence Daemon.");
     fmtout("");
@@ -65,8 +65,8 @@ static void print_version(void)
  */
 static void print_help_callback(const char *name, const char *description)
 {
-    fmtoutp(TAB, name);
-    fmtoutp(BIGTAB, description);
+    fmtoutp(TAB, "%s", name);
+    fmtoutp(BIGTAB, "%s", description);
     fmtout("");
 }
 

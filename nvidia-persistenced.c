@@ -184,7 +184,7 @@ static void syslog_device(NvPdDevice *device, int priority,
         return;
     }
 
-    syslog(priority, device_str);
+    syslog(priority, "%s", device_str);
 
     nvfree(device_str);
 }
