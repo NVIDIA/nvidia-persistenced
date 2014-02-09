@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "common-utils.h"
+#include "msg.h"
 #include "nvgetopt.h"
 #include "nvidia-persistenced.h"
 #include "nvpd_defs.h"
@@ -48,16 +49,16 @@ extern const char *pNV_ID;
  */
 static void print_version(void)
 {
-    fmtout("");
-    fmtout("%s", pNV_ID);
-    fmtout("");
-    fmtoutp(TAB, "The NVIDIA Persistence Daemon.");
-    fmtout("");
-    fmtoutp(TAB, "A tool for maintaining persistent driver state, "
-                 "specifically for use by the NVIDIA Linux driver.");
-    fmtout("");
-    fmtoutp(TAB, "Copyright (C) 2013 NVIDIA Corporation.");
-    fmtout("");
+    nv_info_msg(NULL, "");
+    nv_info_msg(NULL, "%s", pNV_ID);
+    nv_info_msg(NULL, "");
+    nv_info_msg(TAB, "The NVIDIA Persistence Daemon.");
+    nv_info_msg(NULL, "");
+    nv_info_msg(TAB, "A tool for maintaining persistent driver state, "
+                     "specifically for use by the NVIDIA Linux driver.");
+    nv_info_msg(NULL, "");
+    nv_info_msg(TAB, "Copyright (C) 2013 NVIDIA Corporation.");
+    nv_info_msg(NULL, "");
 }
 
 /*
@@ -65,9 +66,9 @@ static void print_version(void)
  */
 static void print_help_callback(const char *name, const char *description)
 {
-    fmtoutp(TAB, "%s", name);
-    fmtoutp(BIGTAB, "%s", description);
-    fmtout("");
+    nv_info_msg(TAB, "%s", name);
+    nv_info_msg(BIGTAB, "%s", description);
+    nv_info_msg(NULL, "");
 }
 
 /*
@@ -78,9 +79,9 @@ static void print_help(void)
 {
     print_version();
 
-    fmtout("");
-    fmtout(NVPD_DAEMON_NAME " [options]");
-    fmtout("");
+    nv_info_msg(NULL, "");
+    nv_info_msg(NULL, NVPD_DAEMON_NAME " [options]");
+    nv_info_msg(NULL, "");
 
     nvgetopt_print_help(__options, 0, print_help_callback);
 }
@@ -138,8 +139,8 @@ void parse_options(int argc, char *argv[], NvPdOptions *options)
             case 'u':
                 pw_entry = getpwnam(strval);
                 if (pw_entry == NULL) {
-                    fmterr("Failed to find user ID of user '%s': %s", strval,
-                           strerror(errno));
+                    nv_error_msg("Failed to find user ID of user '%s': %s", strval,
+                                 strerror(errno));
                     exit(EXIT_FAILURE);
                 }
                 options->uid = pw_entry->pw_uid;
@@ -156,8 +157,8 @@ void parse_options(int argc, char *argv[], NvPdOptions *options)
                 options->nvidia_cfg_path = strval;
                 break;
             default:
-                fmterr("Invalid commandline, please run `%s --help` for "
-                       "usage information.", argv[0]);
+                nv_error_msg("Invalid commandline, please run `%s --help` for "
+                             "usage information.", argv[0]);
                 exit(EXIT_SUCCESS);
         }
     }
