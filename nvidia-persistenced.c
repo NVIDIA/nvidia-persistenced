@@ -2,7 +2,7 @@
  * nvidia-persistenced: A daemon for maintaining persistent driver state,
  * specifically for use by the NVIDIA Linux driver.
  *
- * Copyright (C) 2013 NVIDIA Corporation
+ * Copyright (C) 2013-2014 NVIDIA Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -697,7 +697,10 @@ done:
     if (status == EXIT_SUCCESS) {
         /* Update the PID file with the current process ID */
         sprintf(pid_str, "%d\n", pid);
-        write(pid_fd, pid_str, strlen(pid_str));
+        if (write(pid_fd, pid_str, strlen(pid_str)) != strlen(pid_str)) {
+            syslog(LOG_ERR, "Failed to update PID file: %s", strerror(errno));
+            shutdown_daemon(EXIT_FAILURE);
+        }
         syslog(LOG_NOTICE, "Started (%d)", pid);
     }
     else {
