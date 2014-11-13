@@ -37,8 +37,6 @@ NVIDIA_PERSISTENCED = $(OUTPUTDIR)/nvidia-persistenced
 
 NVIDIA_PERSISTENCED_PROGRAM_NAME = "nvidia-persistenced"
 
-NVIDIA_PERSISTENCED_VERSION := $(NVIDIA_VERSION)
-
 MANPAGE_GZIP ?= 1
 
 MANPAGE_not_gzipped = $(OUTPUTDIR)/nvidia-persistenced.1
@@ -93,7 +91,6 @@ common_cflags += -I .
 
 include version.mk
 common_cflags += -DPROGRAM_NAME=\"$(NVIDIA_PERSISTENCED_PROGRAM_NAME)\"
-common_cflags += -DNVIDIA_VERSION=\"$(NVIDIA_VERSION)\"
 common_cflags += -D_BSD_SOURCE
 common_cflags += -D_XOPEN_SOURCE=500
 common_cflags += -ansi
