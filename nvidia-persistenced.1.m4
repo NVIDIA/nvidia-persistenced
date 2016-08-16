@@ -75,10 +75,10 @@ is available here:
 .SH EXAMPLES
 .TP
 .B nvidia\-persistenced
-Starts the NVIDIA Persistence Daemon with persistence mode disabled for all NVIDIA devices.
-.TP
-.B nvidia\-persistenced \-\-persistence-mode
 Starts the NVIDIA Persistence Daemon with persistence mode enabled for all NVIDIA devices.
+.TP
+.B nvidia\-persistenced \-\-no\-persistence\-mode
+Starts the NVIDIA Persistence Daemon with persistence mode disabled for all NVIDIA devices.
 .TP
 .B nvidia\-persistenced \-\-user=foo
 Starts the NVIDIA Persistence Daemon so that it will run as user 'foo'.
@@ -93,4 +93,4 @@ NVIDIA Corporation
 .BR nvidia\-modprobe (1)
 
 .SH COPYRIGHT
-Copyright \(co 2013 NVIDIA Corporation.
+Copyright \(co 2013-2016 NVIDIA Corporation.

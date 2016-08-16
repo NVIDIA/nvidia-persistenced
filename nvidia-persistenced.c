@@ -338,9 +338,12 @@ static void shutdown_daemon(int status)
     if (remove_dir && (rmdir(NVPD_VAR_RUNTIME_DATA_PATH) < 0) &&
         (errno != ENOENT)) {
         if (errno == EACCES) {
-            syslog(LOG_NOTICE,
-                   "The daemon no longer has permission to remove its runtime "
-                   "data directory %s", NVPD_VAR_RUNTIME_DATA_PATH);
+            if (verbose) {
+                syslog(LOG_NOTICE,
+                       "The daemon no longer has permission to remove its "
+                       "runtime data directory %s",
+                       NVPD_VAR_RUNTIME_DATA_PATH);
+            }
         } else {
             syslog(LOG_WARNING, "Failed to remove runtime data directory: %s",
                    strerror(errno));
@@ -679,7 +682,7 @@ static void daemonize(uid_t uid, gid_t gid)
      * Make sure we're the only instance running.
      * This file should be user-writable, global-readable.
      */
-    pid_fd = open(NVPD_PID_FILE, O_RDWR | O_CREAT | O_EXCL, 0644);
+    pid_fd = open(NVPD_PID_FILE, O_RDWR | O_CREAT, 0644);
     if (pid_fd < 0) {
         syslog(LOG_ERR, "Failed to open PID file: %s", strerror(errno));
         status = EXIT_FAILURE;
