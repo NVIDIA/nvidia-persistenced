@@ -2,7 +2,7 @@
  * nvidia-persistenced: A daemon for maintaining persistent driver state,
  * specifically for use by the NVIDIA Linux driver.
  *
- * Copyright (C) 2013 NVIDIA Corporation
+ * Copyright (C) 2013-2016 NVIDIA Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -92,7 +92,7 @@ static void print_help(void)
  */
 static void setup_option_defaults(NvPdOptions *options)
 {
-    options->persistence_mode = NV_PERSISTENCE_MODE_DISABLED;
+    options->persistence_mode = NV_PERSISTENCE_MODE_ENABLED;
     options->nvidia_cfg_path = NULL;
     options->verbose = 0;
     options->uid = getuid();
