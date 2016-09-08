@@ -57,7 +57,7 @@ static void print_version(void)
     nv_info_msg(TAB, "A tool for maintaining persistent driver state, "
                      "specifically for use by the NVIDIA Linux driver.");
     nv_info_msg(NULL, "");
-    nv_info_msg(TAB, "Copyright (C) 2013 NVIDIA Corporation.");
+    nv_info_msg(TAB, "Copyright (C) 2013-2016 NVIDIA Corporation.");
     nv_info_msg(NULL, "");
 }
 
@@ -84,6 +84,12 @@ static void print_help(void)
     nv_info_msg(NULL, "");
 
     nvgetopt_print_help(__options, 0, print_help_callback);
+
+    nv_info_msg(NULL, "For more detailed usage information, please see the "
+                      "nvidia-persistenced manpage and the \"Using the "
+                      "nvidia-persistenced Utility\" section of the NVIDIA "
+                      "Linux Graphics Driver README.");
+    nv_info_msg(NULL, "");
 }
 
 /*

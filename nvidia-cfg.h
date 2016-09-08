@@ -70,7 +70,8 @@ typedef struct {
 
 typedef enum {
     NVCFG_TYPE_GSYNC2 = 1,
-    NVCFG_TYPE_GSYNC3
+    NVCFG_TYPE_GSYNC3,
+    NVCFG_TYPE_GSYNC4
 } NvCfgGSyncDeviceType;
 
 

@@ -31,7 +31,7 @@ This can improve the startup time of new clients in this scenario.
 
 __OPTIONS__
 
-.SH NOTES
+.SH INSTALLATION
 When installed by
 .B nvidia\-installer
 , sample init scripts to start the daemon for some of the more prevalent init systems are installed as the compressed tarball /usr/share/doc/NVIDIA_GLX-1.0/sample/nvidia-persistenced-init.tar.bz2.
@@ -45,6 +45,12 @@ the NVIDIA management utilities, such as
 .B nvidia\-smi,
 can communicate with it automatically as necessary to manage persistence mode.
 .PP
+See the "Using the nvidia-persistenced Utility" section of the NVIDIA Linux Graphics Driver README for more background, information about installing the
+.B nvidia\-persistenced
+utility to run on system initialization, and troubleshooting tips.
+.PP
+
+.SH PRIVILEGES
 The daemon does not require root privileges to run, and may safely be run as an unprivileged user, given that its runtime directory, /var/run/nvidia-persistenced, is created for and owned by that user prior to starting the daemon.
 .B nvidia\-persistenced
 also requires read and write access to the NVIDIA character device files.
@@ -66,6 +72,8 @@ If
 .B nvidia\-modprobe
 is not installed, the daemon may not be able to start properly if it is not run with root privileges.
 .PP
+
+.SH OTHER
 The source code to
 .B nvidia\-persistenced
 is available here:
