@@ -547,6 +547,7 @@ static void daemonize(uid_t uid, gid_t gid)
     char pid_str[10];
     struct sigaction signal_action;
     sigset_t signal_set;
+    int fd;
     int status = EXIT_SUCCESS;
 
     /*
@@ -682,19 +683,25 @@ static void daemonize(uid_t uid, gid_t gid)
      * Make sure we're the only instance running.
      * This file should be user-writable, global-readable.
      */
-    pid_fd = open(NVPD_PID_FILE, O_RDWR | O_CREAT, 0644);
-    if (pid_fd < 0) {
+    fd = open(NVPD_PID_FILE, O_RDWR | O_CREAT, 0644);
+    if (fd < 0) {
         syslog(LOG_ERR, "Failed to open PID file: %s", strerror(errno));
         status = EXIT_FAILURE;
         goto done;
     }
 
     /* Lock the PID file */
-    if (lockf(pid_fd, F_TLOCK, 0) < 0) {
+    if (lockf(fd, F_TLOCK, 0) < 0) {
         syslog(LOG_ERR, "Failed to lock PID file: %s", strerror(errno));
         status = EXIT_FAILURE;
+        close(fd);
         goto done;
     }
+
+    /*
+     * Once the PID file is locked, we need to clean it up during shutdown.
+     */
+    pid_fd = fd;
 
 done:
     if (status == EXIT_SUCCESS) {
