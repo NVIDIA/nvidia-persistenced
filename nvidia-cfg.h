@@ -415,11 +415,19 @@ NvCfgGSyncDeviceType nvCfgGetGSyncDeviceType(NvCfgGSyncHandle handle);
 
 
 /*
- * nvCfgGetGSyncDeviceFirmwareVersion() - returns the firmware version of
+ * nvCfgGetGSyncDeviceFirmwareVersion() - returns the firmware major version of
  * the GSync device referenced by handle.
  */
 
 int nvCfgGetGSyncDeviceFirmwareVersion(NvCfgGSyncHandle handle);
+
+
+/*
+ * nvCfgGetGSyncDeviceFirmwareMinorVersion() - returns the firmware minor
+ * version of the GSync device referenced by handle.
+ */
+
+int nvCfgGetGSyncDeviceFirmwareMinorVersion(NvCfgGSyncHandle handle);
 
 
 /*
