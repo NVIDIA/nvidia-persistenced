@@ -44,7 +44,7 @@
 #include "nvidia-cfg.h"
 #include "nvpd_defs.h"
 #include "nvpd_rpc.h"
-
+#include "nvidia-numa.h"
 /*
  * Local Definitions
  */
@@ -174,7 +174,7 @@ static void syslog_device(NvPdDevice *device, int priority,
     }
 
     /* Then prefix it with the device info. */
-    device_str = nvasprintf("device %04d:%02x:%02x.%x - %s",
+    device_str = nvasprintf("device %04x:%02x:%02x.%x - %s",
                             device->pci_info.domain, device->pci_info.bus,
                             device->pci_info.slot, device->pci_info.function,
                             str);
@@ -211,6 +211,16 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
     switch (mode) {
 
     case NV_PERSISTENCE_MODE_DISABLED:
+        /* Try to offline memory. On failure, bail out and don't detach. */
+        status = nvNumaOfflineMemory(device->pci_info.domain,
+                                     device->pci_info.bus,
+                                     device->pci_info.slot,
+                                     device->pci_info.function);
+        if (status != NVPD_SUCCESS) {
+            syslog_device(device, LOG_ERR,
+                          "failed to offline memory. Bailing out of detach.");
+            break;
+        }
 
         /* If the new mode is disabled, we must detach the device. */
         success = nv_cfg_api.detach_device(device->nv_cfg_handle);
@@ -238,8 +248,19 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
         if (!success) {
             syslog_device(device, LOG_ERR, "failed to attach.");
             status = NVPD_ERR_DRIVER;
-        } else if (verbose) {
-            syslog_device(device, LOG_NOTICE, "persistence mode enabled.");
+        }
+        else {
+            if (verbose) {
+                syslog_device(device, LOG_NOTICE, "persistence mode enabled.");
+            }
+
+            status = nvNumaOnlineMemory(device->pci_info.domain,
+                                        device->pci_info.bus,
+                                        device->pci_info.slot,
+                                        device->pci_info.function);
+            if (status != NVPD_SUCCESS) {
+                syslog_device(device, LOG_ERR, "failed to online memory.");
+            }
         }
 
         break;

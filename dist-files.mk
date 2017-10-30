@@ -37,6 +37,7 @@ SRC += command_server.c
 SRC += nvidia-persistenced.c
 SRC += options.c
 SRC += $(RPC_SRC)
+SRC += $(NVIDIA_NUMA_DIR)/nvidia-numa.c
 
 # Sample files included in the distribution
 SAMPLE_FILES := init/README
@@ -56,3 +57,4 @@ DIST_FILES += option-table.h
 DIST_FILES += nvidia-persistenced.1.m4
 DIST_FILES += gen-manpage-opts.c
 DIST_FILES += $(RPC_DIR)/nvpd_rpc.h
+DIST_FILES += $(NVIDIA_NUMA_DIR)/nvidia-numa.h

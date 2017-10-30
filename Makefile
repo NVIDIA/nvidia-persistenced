@@ -57,6 +57,7 @@ OPTIONS_1_INC    = $(OUTPUTDIR)/options.1.inc
 
 RPC_DIR ?= .
 NVIDIA_CFG_DIR ?= .
+NVIDIA_NUMA_DIR ?= .
 
 ##############################################################################
 # The common-utils directory may be in one of two places: either elsewhere in
@@ -86,6 +87,7 @@ OBJS = $(call BUILD_OBJECT_LIST,$(SRC))
 
 common_cflags += -I $(COMMON_UTILS_DIR)
 common_cflags += -I $(NVIDIA_CFG_DIR)
+common_cflags += -I $(NVIDIA_NUMA_DIR)
 common_cflags += -I $(RPC_DIR)
 common_cflags += -I .
 
@@ -93,7 +95,7 @@ include version.mk
 common_cflags += -DPROGRAM_NAME=\"$(NVIDIA_PERSISTENCED_PROGRAM_NAME)\"
 common_cflags += -D_BSD_SOURCE
 common_cflags += -D_XOPEN_SOURCE=500
-common_cflags += -ansi
+common_cflags += -std=c99
 
 CFLAGS += $(common_cflags)
 HOST_CFLAGS += $(common_cflags)

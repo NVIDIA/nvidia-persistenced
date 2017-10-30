@@ -25,7 +25,8 @@ enum NvPdStatus {
 	NVPD_ERR_PERMISSIONS = 7,
 	NVPD_ERR_RPC = 8,
 	NVPD_ERR_USER_NOT_FOUND = 9,
-	NVPD_ERR_UNKNOWN = 10,
+	NVPD_ERR_NUMA_FAILURE = 10,
+	NVPD_ERR_UNKNOWN = 11,
 };
 typedef enum NvPdStatus NvPdStatus;
 
