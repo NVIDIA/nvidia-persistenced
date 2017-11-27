@@ -589,6 +589,8 @@ int offline_memory(int fd)
         goto driver_fail;
     }
 
+    syslog(LOG_NOTICE, "NUMA: Memory offlining completed!\n");
+
     return 0;
 
 offline_failed:
@@ -726,7 +728,7 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
             break;
         case NV_IOCTL_NUMA_STATUS_DISABLED:
         case NV_IOCTL_NUMA_STATUS_ONLINE:
-            return NVPD_SUCCESS;
+            goto done;
         case NV_IOCTL_NUMA_STATUS_ONLINE_IN_PROGRESS:
         case NV_IOCTL_NUMA_STATUS_OFFLINE_IN_PROGRESS:
             syslog(LOG_ERR, "Device NUMA status %s is invalid\n",
@@ -785,7 +787,7 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
     /* If memory was auto-onlined to Movable, skip changing node state */
     if (auto_online_success) {
         syslog(LOG_NOTICE, "All device NUMA memory onlined and movable\n");
-        goto success;
+        goto set_driver_status;
     }
 
     status = change_numa_node_state(numa_info_params.nid,
@@ -800,7 +802,7 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
         goto online_failed;
     }
 
-success:
+set_driver_status:
     status = set_gpu_numa_status(fd, NV_IOCTL_NUMA_STATUS_ONLINE);
     if (status < 0) {
         syslog(LOG_ERR, "Failed to set device NUMA status to %s\n",
@@ -809,6 +811,7 @@ success:
     }
 
     syslog(LOG_NOTICE, "NUMA: Memory onlining completed!\n");
+done:
     close(fd);
     return NVPD_SUCCESS;
 
@@ -842,7 +845,6 @@ NvPdStatus nvNumaOfflineMemory(int domain, int bus, int slot, int function)
         goto done;
     }
 
-    syslog(LOG_NOTICE, "NUMA: Memory offlining completed!\n");
     close(fd);
     return NVPD_SUCCESS; 
 
