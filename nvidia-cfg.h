@@ -442,4 +442,12 @@ NvCfgBool nvCfgFlashGSyncDevice(NvCfgGSyncHandle handle, int format,
                                 const unsigned char *newFirmwareImage,
                                 int size);
 
+
+/*
+ * nvCfgDumpDisplayPortAuxLog() - dump the DisplayPort AUX channel log to the
+ * system log. On success, NVCFG_TRUE will be returned. On failure, NVCFG_FALSE
+ * will be returned.
+ */
+NvCfgBool nvCfgDumpDisplayPortAuxLog(NvCfgDeviceHandle handle);
+
 #endif /* __NVIDIA_CFG__ */
