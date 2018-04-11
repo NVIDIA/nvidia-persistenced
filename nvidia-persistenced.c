@@ -33,18 +33,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "common-utils.h"
 #include "nvidia-persistenced.h"
-#include "nvidia-cfg.h"
 #include "nvpd_defs.h"
 #include "nvpd_rpc.h"
 #include "nvidia-numa.h"
+#include "nvidia-syslog-utils.h"
 /*
  * Local Definitions
  */
@@ -67,9 +65,7 @@ static int pid_fd = -1;
 static int socket_fd = -1;
 static NvPdDevice *devices = NULL;
 static int num_devices = 0;
-static int log_mask = 0;
 static int remove_dir = 0;
-static int verbose = 0;
 
 static struct {
     NvCfgBool (*get_pci_devices)(int *, NvCfgPciDevice **);
@@ -80,14 +76,12 @@ static struct {
 /*
  * Local Functions
  */
-static void daemonize(uid_t uid, gid_t gid);
+static int daemonize(uid_t uid, gid_t gid);
 static int load_nvidia_cfg_sym(void **sym_ptr, const char *sym_name);
 static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path);
 static NvPdStatus setup_devices(NvPersistenceMode default_mode);
 static NvPdStatus setup_rpc(void);
 static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode);
-static void syslog_device(NvPdDevice *device, int priority,
-                          const char *format, ...);
 
 /*
  * nvPdSetDevicePersistenceMode() - This function implements the daemon
@@ -151,42 +145,55 @@ NvPdStatus nvPdGetDevicePersistenceMode(int domain, int bus, int slot,
 }
 
 /*
- * syslog_device() - This function prints the device info along with the
- * specified message to syslog. If there is a failure to allocate memory along
- * the way, it will simply fail with an error to syslog().
+ * init_complete() - called by the child (daemon) process to signal to the
+ * parent process, via the init pipe created during daemonize(), that
+ * initialization has completed successfully.
  */
-static void syslog_device(NvPdDevice *device, int priority,
-                          const char *format, ...)
+static NvPdStatus init_complete(int pipe_write_fd)
 {
-    char *device_str = NULL;
-    char *str = NULL;
+    unsigned char success = 1;
+    int bytes;
+    
+    bytes = write(pipe_write_fd, &success, sizeof(success));
+    
+    close(pipe_write_fd);
 
-    /* First check if this message will even show up. */
-    if ((log_mask & priority) == 0) {
-        return;
+    if (bytes < 0) {
+        fprintf(stderr, "Failed to write init pipe: %s\n", strerror(errno));
+        return NVPD_ERR_IO;
     }
 
-    /* First fill in the format string as usual. */
-    NV_VSNPRINTF(str, format);
-    if (str == NULL) {
-        syslog(LOG_ERR, "Failed to create formatted message.");
-        return;
+    return NVPD_SUCCESS;
+}
+
+/*
+ * wait_for_init_complete() - called by the parent process to block on the
+ * init pipe and wait for the child process to signal its successful
+ * initialization.
+ *
+ * The init pipe will be closed upon return from this function.
+ */
+static NvPdStatus wait_for_init_complete(int pipe_read_fd)
+{
+    unsigned char success = 0;
+    int bytes;
+
+    bytes = read(pipe_read_fd, &success, sizeof(success));
+
+    close(pipe_read_fd);    
+
+    if (bytes < 0) {
+        fprintf(stderr, "Failed to read init pipe: %s\n", strerror(errno));
+        return NVPD_ERR_IO;
     }
 
-    /* Then prefix it with the device info. */
-    device_str = nvasprintf("device %04x:%02x:%02x.%x - %s",
-                            device->pci_info.domain, device->pci_info.bus,
-                            device->pci_info.slot, device->pci_info.function,
-                            str);
-    nvfree(str);
-    if (device_str == NULL) {
-        syslog(LOG_ERR, "Failed to create device message.");
-        return;
+    if (bytes != sizeof(success) || !success) {
+        fprintf(stderr, "nvidia-persistenced failed to initialize. "
+                        "Check syslog for more details.\n");
+        return NVPD_ERR_UNKNOWN;
     }
 
-    syslog(priority, "%s", device_str);
-
-    nvfree(device_str);
+    return NVPD_SUCCESS;
 }
 
 /*
@@ -201,10 +208,8 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
 
     /* If the device is already in the mode specified, just abort */
     if (mode == device->mode) {
-        if (verbose) {
-            syslog_device(device, LOG_NOTICE,
-                          "already in requested persistence mode.");
-        }
+        SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
+                              "already in requested persistence mode.");
         return status;
     }
 
@@ -212,12 +217,9 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
 
     case NV_PERSISTENCE_MODE_DISABLED:
         /* Try to offline memory. On failure, bail out and don't detach. */
-        status = nvNumaOfflineMemory(device->pci_info.domain,
-                                     device->pci_info.bus,
-                                     device->pci_info.slot,
-                                     device->pci_info.function);
+        status = nvNumaOfflineMemory(&device->pci_info);
         if (status != NVPD_SUCCESS) {
-            syslog_device(device, LOG_ERR,
+            syslog_device(&device->pci_info, LOG_ERR,
                           "failed to offline memory. Bailing out of detach.");
             break;
         }
@@ -225,16 +227,14 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
         /* If the new mode is disabled, we must detach the device. */
         success = nv_cfg_api.detach_device(device->nv_cfg_handle);
         if (!success) {
-            syslog_device(device, LOG_ERR, "failed to detach.");
+            syslog_device(&device->pci_info, LOG_ERR, "failed to detach.");
             status = NVPD_ERR_DRIVER;
         } else {
-            if (verbose) {
-                syslog_device(device, LOG_NOTICE,
-                              "persistence mode disabled.");
-            }
+            SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
+                                  "persistence mode disabled.");
             device->nv_cfg_handle = NULL;
         }
-    
+
         break;
 
     case NV_PERSISTENCE_MODE_ENABLED:
@@ -246,20 +246,27 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
                                                device->pci_info.function,
                                                &device->nv_cfg_handle);
         if (!success) {
-            syslog_device(device, LOG_ERR, "failed to attach.");
+            syslog_device(&device->pci_info, LOG_ERR, "failed to attach.");
             status = NVPD_ERR_DRIVER;
         }
         else {
-            if (verbose) {
-                syslog_device(device, LOG_NOTICE, "persistence mode enabled.");
-            }
+            SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
+                                  "persistence mode enabled.");
 
-            status = nvNumaOnlineMemory(device->pci_info.domain,
-                                        device->pci_info.bus,
-                                        device->pci_info.slot,
-                                        device->pci_info.function);
+            /* Try to online memory. On failure, detach the device. */
+            status = nvNumaOnlineMemory(&device->pci_info);
             if (status != NVPD_SUCCESS) {
-                syslog_device(device, LOG_ERR, "failed to online memory.");
+                syslog_device(&device->pci_info, LOG_ERR,
+                              "failed to online memory.");
+                success = nv_cfg_api.detach_device(device->nv_cfg_handle);
+                if (!success) {
+                    syslog_device(&device->pci_info, LOG_ERR,
+                                  "failed to detach.");
+                } else {
+                    SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
+                                          "persistence mode disabled.");
+                    device->nv_cfg_handle = NULL;
+                }
             }
         }
 
@@ -267,7 +274,8 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
 
     default:
 
-        syslog_device(device, LOG_ERR, "requested invalid mode %d", mode);
+        syslog_device(&device->pci_info, LOG_ERR,
+                      "requested invalid mode %d", mode);
         status = NVPD_ERR_INVALID_ARGUMENT;
         break;
 
@@ -290,6 +298,11 @@ static void shutdown_daemon(int status)
 {
     int i;
 
+    /* Nothing to clean up */
+    if (pid <= 0) {
+        goto shutdown;
+    }
+
     /* Clean up and remove the RPC socket */
     if (socket_fd != -1) {
         /* Unregister any mappings to the RPC dispatch routine */
@@ -298,8 +311,8 @@ static void shutdown_daemon(int status)
         if (close(socket_fd) < 0) {
             syslog(LOG_ERR, "Failed to close socket: %s",
                    strerror(errno));
-        } else if (verbose) {
-            syslog(LOG_INFO, "Socket closed.");
+        } else {
+            SYSLOG_VERBOSE(LOG_INFO, "Socket closed.");
         }
 
         if (unlink(NVPD_SOCKET_PATH) < 0) {
@@ -332,16 +345,16 @@ static void shutdown_daemon(int status)
         if (lockf(pid_fd, F_ULOCK, 0) < 0) {
             syslog(LOG_ERR, "Failed to unlock PID file: %s",
                    strerror(errno));
-        } else if (verbose) {
-            syslog(LOG_INFO, "PID file unlocked.");
+        } else {
+            SYSLOG_VERBOSE(LOG_INFO, "PID file unlocked.");
         }
 
         /* Close the PID file */
         if (close(pid_fd) < 0) {
             syslog(LOG_ERR, "Failed to close PID file: %s",
                    strerror(errno));
-        } else if (verbose) {
-            syslog(LOG_INFO, "PID file closed.");
+        } else {
+            SYSLOG_VERBOSE(LOG_INFO, "PID file closed.");
         }
 
         /* Remove the PID file */
@@ -351,7 +364,7 @@ static void shutdown_daemon(int status)
         }
     }
 
-    /* 
+    /*
      * Remove the runtime data directory if the daemon created it. If the
      * daemon has dropped permissions and is no longer able to remove the
      * directory, issue a notice instead of a warning, as this is expected.
@@ -359,12 +372,10 @@ static void shutdown_daemon(int status)
     if (remove_dir && (rmdir(NVPD_VAR_RUNTIME_DATA_PATH) < 0) &&
         (errno != ENOENT)) {
         if (errno == EACCES) {
-            if (verbose) {
-                syslog(LOG_NOTICE,
-                       "The daemon no longer has permission to remove its "
-                       "runtime data directory %s",
-                       NVPD_VAR_RUNTIME_DATA_PATH);
-            }
+            SYSLOG_VERBOSE(LOG_NOTICE,
+                           "The daemon no longer has permission to remove its "
+                           "runtime data directory %s",
+                           NVPD_VAR_RUNTIME_DATA_PATH);
         } else {
             syslog(LOG_WARNING, "Failed to remove runtime data directory: %s",
                    strerror(errno));
@@ -374,6 +385,7 @@ static void shutdown_daemon(int status)
     syslog(LOG_NOTICE, "Shutdown (%d)", pid);
     closelog();
 
+shutdown:
     exit(status);
 }
 
@@ -413,7 +425,7 @@ static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path)
     if (nvidia_cfg_path != NULL) {
         nvfree(lib_path);
     }
-    
+
     if (libnvidia_cfg == NULL) {
         syslog(LOG_ERR, "Failed to open %s: %s", NVIDIA_CFG_LIB,
                dlerror());
@@ -477,9 +489,7 @@ static NvPdStatus setup_devices(NvPersistenceMode default_mode)
         devices[i].pci_info.function = 0;
         devices[i].mode = NV_PERSISTENCE_MODE_DISABLED;
 
-        if (verbose) {
-            syslog_device(&devices[i], LOG_DEBUG, "registered");
-        }
+        SYSLOG_DEVICE_VERBOSE(&(devices[i].pci_info), LOG_DEBUG, "registered");
 
         if (default_mode != NV_PERSISTENCE_MODE_DISABLED) {
             (void) set_device_mode(&devices[i], default_mode);
@@ -528,9 +538,7 @@ static NvPdStatus setup_rpc()
         return NVPD_ERR_RPC;
     }
 
-    if (verbose) {
-        syslog(LOG_INFO, "Local RPC service initialized");
-    }
+    SYSLOG_VERBOSE(LOG_INFO, "Local RPC service initialized");
 
     return NVPD_SUCCESS;
 }
@@ -541,9 +549,7 @@ static NvPdStatus setup_rpc()
  */
 static void signal_handler(int signal)
 {
-    if (verbose) {
-        syslog(LOG_DEBUG, "Received signal %d", signal);
-    }
+    SYSLOG_VERBOSE(LOG_DEBUG, "Received signal %d", signal);
 
     switch (signal) {
 
@@ -563,13 +569,14 @@ static void signal_handler(int signal)
  * daemonize() - This function converts the current process into a daemon
  * process.
  */
-static void daemonize(uid_t uid, gid_t gid)
+static int daemonize(uid_t uid, gid_t gid)
 {
     char pid_str[10];
     struct sigaction signal_action;
     sigset_t signal_set;
+    int init_pipe_fds[2];
+    int pipe_read_fd, pipe_write_fd;
     int fd;
-    int status = EXIT_SUCCESS;
 
     /*
      * Set up the signal handler - block TTY-related signals, catch
@@ -589,34 +596,60 @@ static void daemonize(uid_t uid, gid_t gid)
     sigaction(SIGINT,  &signal_action, NULL);
     sigaction(SIGTERM, &signal_action, NULL);
 
-    pid = fork();
-    if (pid < 0) {
-        syslog(LOG_ERR, "Failed to fork() daemon: %s",
-               strerror(errno));
+    /*
+     * Set up the init pipe for coordinating daemon init with main process
+     * return.
+     */
+    if (pipe(init_pipe_fds) < 0) {
+        fprintf(stderr, "Failed to create init pipe: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
-    else if (pid > 0) {
-        /* Kill off the parent process */
-        exit(EXIT_SUCCESS);
-    }
 
-    /* Save off the new pid for logging */
-    pid = getpid();
+    pipe_read_fd = init_pipe_fds[0];
+    pipe_write_fd = init_pipe_fds[1];
+
+    pid = fork();
+    if (pid < 0) {
+        fprintf(stderr, "Failed to fork() daemon: %s", strerror(errno));
+        goto shutdown;
+    }
+    else if (pid > 0) {
+        NvPdStatus init_status;
+
+        /*
+         * Close the write end of the pipe so we don't block if the child dies
+         * or otherwise closes its write fd before it sends the init message.
+         */
+        close(pipe_write_fd);
+
+        /*
+         * Watch the init pipe for the child process to init, then exit the
+         * parent process.
+         */
+        init_status = wait_for_init_complete(pipe_read_fd);
+        exit((init_status == NVPD_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE);
+    }
 
     /* Reset default file permissions */
     umask(0);
 
     /* Create a new session for the daemon */
     if (setsid() < 0) {
-        syslog(LOG_ERR, "Failed to create new daemon session: %s",
-               strerror(errno));
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "Failed to create new daemon session: %s",
+                strerror(errno));
+        goto shutdown;
     }
+
+    /* Save off the new pid for logging */
+    pid = getpid();
 
     /* Close the standard file descriptors */
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
+
+    /* Close the read end of the init pipe */
+    close(pipe_read_fd);
 
     if (verbose) {
         log_mask = LOG_UPTO(LOG_DEBUG);
@@ -628,9 +661,7 @@ static void daemonize(uid_t uid, gid_t gid)
 
     /* Setup syslog connection */
     openlog(NVPD_DAEMON_NAME, 0, LOG_DAEMON);
-    if (verbose) {
-        syslog(LOG_INFO, "Verbose syslog connection opened");
-    }
+    SYSLOG_VERBOSE(LOG_INFO, "Verbose syslog connection opened");
 
     /* Go somewhere that we won't be unmounted */
     if (chdir("/") < 0) {
@@ -638,7 +669,7 @@ static void daemonize(uid_t uid, gid_t gid)
                strerror(errno));
     }
 
-    /* 
+    /*
      * Try to create the supplied data path - if it fails, we'll catch the
      * error with the access() call below.
      */
@@ -648,12 +679,10 @@ static void daemonize(uid_t uid, gid_t gid)
                    NVPD_VAR_RUNTIME_DATA_PATH, strerror(errno));
         }
 
-        if (verbose) {
-            syslog(LOG_INFO, "Directory %s will not be removed on exit",
-                   NVPD_VAR_RUNTIME_DATA_PATH);
-        }
+        SYSLOG_VERBOSE(LOG_INFO, "Directory %s will not be removed on exit",
+                       NVPD_VAR_RUNTIME_DATA_PATH);
     } else {
-        /* 
+        /*
          * Only attempt to remove the directory on shutdown if the daemon
          * created it.
          */
@@ -668,26 +697,21 @@ static void daemonize(uid_t uid, gid_t gid)
         if (chown(NVPD_VAR_RUNTIME_DATA_PATH, uid, gid) < 0) {
             syslog(LOG_ERR, "Failed to change ownership of %s: %s",
                    NVPD_VAR_RUNTIME_DATA_PATH, strerror(errno));
-            status = EXIT_FAILURE;
-            goto done;
+            goto shutdown;
         }
 
         if (setgid(gid) < 0) {
             syslog(LOG_ERR, "Failed to set group ID: %s", strerror(errno));
-            status = EXIT_FAILURE;
-            goto done;
+            goto shutdown;
         }
 
         if (setuid(uid) < 0) {
             syslog(LOG_ERR, "Failed to set user ID: %s", strerror(errno));
-            status = EXIT_FAILURE;
-            goto done;
+            goto shutdown;
         }
 
-        if (verbose) {
-            syslog(LOG_INFO, "Now running with user ID %d and group ID %d",
-                   uid, gid);
-        }
+        SYSLOG_VERBOSE(LOG_INFO, "Now running with user ID %d and group ID %d",
+                       uid, gid);
     }
 
     /*
@@ -696,8 +720,7 @@ static void daemonize(uid_t uid, gid_t gid)
     if (access(NVPD_VAR_RUNTIME_DATA_PATH, R_OK | W_OK) < 0) {
         syslog(LOG_ERR, "Unable to access %s: %s",
                NVPD_VAR_RUNTIME_DATA_PATH, strerror(errno));
-        status = EXIT_FAILURE;
-        goto done;
+        goto shutdown;
     }
 
     /*
@@ -707,16 +730,14 @@ static void daemonize(uid_t uid, gid_t gid)
     fd = open(NVPD_PID_FILE, O_RDWR | O_CREAT, 0644);
     if (fd < 0) {
         syslog(LOG_ERR, "Failed to open PID file: %s", strerror(errno));
-        status = EXIT_FAILURE;
-        goto done;
+        goto shutdown;
     }
 
     /* Lock the PID file */
     if (lockf(fd, F_TLOCK, 0) < 0) {
         syslog(LOG_ERR, "Failed to lock PID file: %s", strerror(errno));
-        status = EXIT_FAILURE;
         close(fd);
-        goto done;
+        goto shutdown;
     }
 
     /*
@@ -724,54 +745,68 @@ static void daemonize(uid_t uid, gid_t gid)
      */
     pid_fd = fd;
 
-done:
-    if (status == EXIT_SUCCESS) {
-        /* Update the PID file with the current process ID */
-        sprintf(pid_str, "%d\n", pid);
-        if (write(pid_fd, pid_str, strlen(pid_str)) != strlen(pid_str)) {
-            syslog(LOG_ERR, "Failed to update PID file: %s", strerror(errno));
-            shutdown_daemon(EXIT_FAILURE);
-        }
-        syslog(LOG_NOTICE, "Started (%d)", pid);
+    /* Update the PID file with the current process ID */
+    sprintf(pid_str, "%d\n", pid);
+    if (write(pid_fd, pid_str, strlen(pid_str)) != strlen(pid_str)) {
+        syslog(LOG_ERR, "Failed to update PID file: %s", strerror(errno));
+        goto shutdown;
     }
-    else {
-        /*
-         * If we get this far but have an error condition, we need to cleanup
-         * any runtime files left around.
-         */
-        shutdown_daemon(status);
-    }
+
+    syslog(LOG_NOTICE, "Started (%d)", pid);
+    return pipe_write_fd;
+
+shutdown:
+    close(pipe_write_fd);
+
+    /*
+     * If we get this far but have an error condition, we need to cleanup
+     * any runtime files left around.
+     */
+    shutdown_daemon(EXIT_FAILURE);
+
+    /* Unreachable */
+    return -1;
 }
 
 int main(int argc, char* argv[])
 {
     NvPdStatus status;
     NvPdOptions options;
+    int pipe_write_fd;
 
     parse_options(argc, argv, &options);
     verbose = options.verbose;
 
-    daemonize(options.uid, options.gid);
+    pipe_write_fd = daemonize(options.uid, options.gid);
 
+    /* Only the daemon process reaches this point */
     status = setup_nvidia_cfg_api(options.nvidia_cfg_path);
     if (status != NVPD_SUCCESS) {
-        shutdown_daemon(EXIT_FAILURE);
+        goto shutdown;
     }
 
     status = setup_devices(options.persistence_mode);
     if (status != NVPD_SUCCESS) {
-        shutdown_daemon(EXIT_FAILURE);
+        goto shutdown;
     }
 
     status = setup_rpc();
     if (status != NVPD_SUCCESS) {
-        shutdown_daemon(EXIT_FAILURE);
+        goto shutdown;
+    }
+
+    status = init_complete(pipe_write_fd);
+    if (status != NVPD_SUCCESS) {
+        goto shutdown;
     }
 
     svc_run();
 
     /* We should never return from svc_run() in a non-error scenario */
     syslog(LOG_ERR, "Failed to start local RPC service");
+
+shutdown:
+    close(pipe_write_fd);
     shutdown_daemon(EXIT_FAILURE);
 
     return 0;

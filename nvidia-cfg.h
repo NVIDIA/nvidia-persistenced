@@ -380,6 +380,9 @@ NvCfgBool nvCfgIsPrimaryDevice(NvCfgDeviceHandle handle,
  * responsibility to free the returned array of strings. On success, 
  * NVCFG_TRUE will be returned and serials will be assigned.  On failure,
  * NVCFG_FALSE will be returned.
+ *
+ * Note that this function is deprecated and will always return an empty array
+ * on recent drivers, since QuadroPlex devices are no longer supported.
  */
 
 NvCfgBool nvCfgGetTeslaSerialNumbers(char ***serials);

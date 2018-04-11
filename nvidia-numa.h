@@ -24,8 +24,11 @@
 #define _NV_GPU_NUMA_H_
 
 #include "nvpd_rpc.h"
+#include "nvidia-syslog-utils.h"
 
-typedef enum 
+#define NV_IOCTL_NUMA_INFO_MAX_BLACKLIST_ADDRESSES 64
+
+typedef enum
 {
     NV_IOCTL_NUMA_STATUS_DISABLED             = 0,
     NV_IOCTL_NUMA_STATUS_OFFLINE              = 1,
@@ -42,6 +45,13 @@ typedef struct nv_ioctl_sys_params
     uint64_t memblock_size;
 } nv_ioctl_sys_params_t;
 
+/* list of device blacklisted addresses */
+typedef struct blacklist_addresses
+{
+    uint64_t  addresses[NV_IOCTL_NUMA_INFO_MAX_BLACKLIST_ADDRESSES];
+    uint32_t  numEntries;
+} nv_blacklist_addresses_t;
+
 /* per-device NUMA memory info as assigned by the system */
 typedef struct nv_ioctl_numa_info
 {
@@ -50,6 +60,7 @@ typedef struct nv_ioctl_numa_info
     uint64_t memblock_size;
     uint64_t numa_mem_addr;
     uint64_t numa_mem_size;
+    nv_blacklist_addresses_t blacklist_addresses;
 } nv_ioctl_numa_info_t;
 
 /* set the status of the device NUMA memory */
@@ -58,8 +69,8 @@ typedef struct nv_ioctl_set_numa_status
     int status;
 } nv_ioctl_set_numa_status_t;
 
-NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function);
+NvPdStatus nvNumaOnlineMemory(NvCfgPciDevice *device_pci_info);
 
-NvPdStatus nvNumaOfflineMemory(int domain, int bus, int slot, int function);
+NvPdStatus nvNumaOfflineMemory(NvCfgPciDevice *device_pci_info);
 
 #endif

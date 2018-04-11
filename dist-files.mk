@@ -36,6 +36,7 @@ RPC_SRC += $(RPC_DIR)/nvpd_rpc_xdr.c
 SRC += command_server.c
 SRC += nvidia-persistenced.c
 SRC += options.c
+SRC += nvidia-syslog-utils.c
 SRC += $(RPC_SRC)
 SRC += $(NVIDIA_NUMA_DIR)/nvidia-numa.c
 
@@ -53,6 +54,7 @@ DIST_FILES += README
 DIST_FILES += dist-files.mk
 DIST_FILES += nvpd_defs.h
 DIST_FILES += nvidia-persistenced.h
+DIST_FILES += nvidia-syslog-utils.h
 DIST_FILES += option-table.h
 DIST_FILES += nvidia-persistenced.1.m4
 DIST_FILES += gen-manpage-opts.c

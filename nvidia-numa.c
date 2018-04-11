@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, NVIDIA CORPORATION.
+ * Copyright (c) 2018, NVIDIA CORPORATION.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -38,7 +38,6 @@
 #include <errno.h>
 
 #include "common-utils.h"
-#include "nvidia-cfg.h"
 #include "nvidia-numa.h"
 
 #define NV_DEVICE_INFO_PATH_FMT \
@@ -48,10 +47,12 @@
 #define BUF_SIZE                     100
 #define BRING_OFFLINE_CMD            "offline"
 #define BRING_ONLINE_CMD             "online_movable"
-#define MEMBLK_DIR_PATH_FMT          "/sys/devices/system/memory/memory%d"
+#define MEMORY_PATH_FMT              "/sys/devices/system/memory"
+#define MEMORY_HARD_OFFLINE_PATH_FMT MEMORY_PATH_FMT "/hard_offline_page"
+#define MEMORY_PROBE_PATH_FMT        MEMORY_PATH_FMT "/probe"
+#define MEMBLK_DIR_PATH_FMT          MEMORY_PATH_FMT "/memory%d"
 #define MEMBLK_STATE_PATH_FMT        MEMBLK_DIR_PATH_FMT "/state"
 #define MEMBLK_VALID_ZONES_PATH_FMT  MEMBLK_DIR_PATH_FMT "/valid_zones"
-#define MEMORY_PROBE_PATH_FMT        "/sys/devices/system/memory/probe"
 #define NID_PATH_FMT                 "/sys/devices/system/node/node%d"
 #define STATE_ONLINE                 "online"
 #define VALID_MOVABLE_STATE          "Movable"
@@ -67,7 +68,7 @@
 
 static inline char* mem_state_to_string(mem_state_t state)
 {
-    switch (state) 
+    switch (state)
     {
         case NV_IOCTL_NUMA_STATUS_DISABLED:
             return "numa_status_disabled";
@@ -101,7 +102,7 @@ int get_gpu_minor_number(int domain, int bus, int slot, int function,
 
     fp = fopen(info_path, "r");
     if (!fp) {
-        syslog(LOG_ERR, "Failed to open %s: %s\n",
+        syslog(LOG_ERR, "NUMA: Failed to open %s: %s\n",
                info_path, strerror(errno));
         return -errno;
     }
@@ -117,7 +118,7 @@ int get_gpu_minor_number(int domain, int bus, int slot, int function,
     if (last_str)
         *minor_num = atoi(last_str + 1);
     else {
-        syslog(LOG_ERR, "Failed to extract device minor number from %s\n",
+        syslog(LOG_ERR, "NUMA: Failed to extract device minor number from %s\n",
                info_path);
         status = -EINVAL;
     }
@@ -135,7 +136,7 @@ int get_gpu_device_file(int domain, int bus, int slot, int function,
 
     status = get_gpu_minor_number(domain, bus, slot, function, &minor_num);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to get device minor number\n");
+        syslog(LOG_ERR, "NUMA: Failed to get device minor number\n");
         return status;
     }
 
@@ -152,13 +153,13 @@ int get_gpu_device_file_fd(int domain, int bus, int slot, int function, int *fd)
 
     status = get_gpu_device_file(domain, bus, slot, function, dev_file);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to get device file\n");
+        syslog(LOG_ERR, "NUMA: Failed to get device file\n");
         return status;
     }
 
     *fd = open(dev_file, O_RDWR);
     if (*fd < 0) {
-        syslog(LOG_ERR, "Failed to open %s: %s\n", dev_file,
+        syslog(LOG_ERR, "NUMA: Failed to open %s: %s\n", dev_file,
                strerror(errno));
         return -errno;
     }
@@ -177,7 +178,7 @@ int get_gpu_numa_info(int fd, nv_ioctl_numa_info_t *numa_info)
                     char[sizeof(*numa_info)]);
 
     if (ioctl(fd, request, numa_info) < 0) {
-        syslog(LOG_ERR, "Failed ioctl call to get device NUMA Info: %s\n",
+        syslog(LOG_ERR, "NUMA: Failed ioctl call to get device NUMA Info: %s\n",
                strerror(errno));
         status = -errno;
     }
@@ -199,7 +200,8 @@ int set_gpu_numa_status(int fd, mem_state_t numa_state)
     numa_status_params.status = numa_state;
 
     if (ioctl(fd, request, &numa_status_params) < 0) {
-        syslog(LOG_ERR, "Failed ioctl call to set device NUMA status: %s\n",
+        syslog(LOG_ERR,
+               "NUMA: Failed ioctl call to set device NUMA status: %s\n",
                strerror(errno));
         status = -errno;
     }
@@ -216,7 +218,7 @@ int read_string_from_file(const char *path_to_file, char *read_buffer,
 
     fd = open(path_to_file, O_RDONLY, S_IRUSR);
     if (fd < 0) {
-        syslog(LOG_ERR, "Failed to open %s: %s\n",
+        syslog(LOG_ERR, "NUMA: Failed to open %s: %s\n",
                path_to_file, strerror(errno));
         return -errno;
     }
@@ -227,7 +229,7 @@ int read_string_from_file(const char *path_to_file, char *read_buffer,
     close(fd);
 
     if (read_count <= 0) {
-        syslog(LOG_ERR, "Failed to read %s: %s\n", path_to_file,
+        syslog(LOG_ERR, "NUMA: Failed to read %s: %s\n", path_to_file,
                strerror(errno));
         return -errno;
     }
@@ -251,7 +253,7 @@ int write_string_to_file(const char *path_to_file, const char *write_buffer,
 
     fd = open(path_to_file, O_WRONLY | O_TRUNC, S_IWUSR);
     if (fd < 0) {
-        syslog(LOG_ERR, "Failed to open %s: %s\n",
+        syslog(LOG_ERR, "NUMA: Failed to open %s: %s\n",
                path_to_file, strerror(errno));
         return -errno;
     }
@@ -260,14 +262,7 @@ int write_string_to_file(const char *path_to_file, const char *write_buffer,
 
     close(fd);
 
-    if ((write_count > 0) && (write_count < strLength)) {
-        syslog(LOG_DEBUG, "Failed with incomplete write to %s: %s\n",
-               path_to_file, strerror(errno));
-        return -errno;
-    }
-    else if (write_count < 0) {
-        syslog(LOG_DEBUG, "Failed to write %s: %s\n",
-               path_to_file, strerror(errno));
+    if (((write_count > 0) && (write_count < strLength)) || (write_count < 0)) {
         return -errno;
     }
 
@@ -299,7 +294,7 @@ int change_memblock_state(uint32_t mem_block_id, mem_state_t new_state)
     if (cur_state == new_state)
         goto done;
 
-    switch (new_state) 
+    switch (new_state)
     {
         case NV_IOCTL_NUMA_STATUS_ONLINE:
             cmd = BRING_ONLINE_CMD;
@@ -315,12 +310,15 @@ int change_memblock_state(uint32_t mem_block_id, mem_state_t new_state)
 
 done:
     if (status == 0) {
-        syslog(LOG_DEBUG, "Successfully changed memblock state of %s to %s\n",
-               numa_file_path, mem_state_to_string(new_state));
+        SYSLOG_VERBOSE(LOG_DEBUG,
+                       "NUMA: Successfully changed memblock state of %s to %s\n",
+                       numa_file_path, mem_state_to_string(new_state));
     }
     else {
-        syslog(LOG_DEBUG, "Failed to change state of %s to %s\n",
-               numa_file_path, mem_state_to_string(new_state));
+        SYSLOG_VERBOSE(LOG_DEBUG,
+                       "NUMA: Failed to change state of %s to %s: %s\n",
+                       numa_file_path, mem_state_to_string(new_state),
+                       strerror(-status));
     }
 
     return status;
@@ -352,7 +350,7 @@ int gather_memblock_ids_for_node(uint32_t node_id, uint32_t *memblock_start_id,
 
     dir_ptr = opendir(numa_file_path);
     if (!dir_ptr) {
-        syslog(LOG_ERR, "Failed to open directory %s: %s\n",
+        syslog(LOG_ERR, "NUMA: Failed to open directory %s: %s\n",
                numa_file_path, strerror(errno));
         return -errno;
     }
@@ -368,12 +366,13 @@ int gather_memblock_ids_for_node(uint32_t node_id, uint32_t *memblock_start_id,
 
         if (memblock_id == 0) {
             syslog(LOG_ERR,
-                   "Failed to get memblock id while iterating through %s\n",
+                   "NUMA: Failed to get memblock id while iterating through %s\n",
                    numa_file_path);
             goto cleanup;
         }
 
-        syslog(LOG_DEBUG, "Found memblock entry %"PRIu32"\n", memblock_id);
+        SYSLOG_VERBOSE(LOG_DEBUG, "NUMA: Found memblock entry %"PRIu32"\n",
+                       memblock_id);
 
         /* Record the smallest and largest assigned memblock IDs */
         start_id = (start_id < memblock_id) ? start_id : memblock_id;
@@ -386,7 +385,7 @@ int gather_memblock_ids_for_node(uint32_t node_id, uint32_t *memblock_start_id,
      * also an error, by verifying that start_id has been set.
      */
     if (start_id == UINT32_MAX) {
-        syslog(LOG_ERR, "Failed to find any files in %s", numa_file_path);
+        syslog(LOG_ERR, "NUMA: Failed to find any files in %s", numa_file_path);
         status = -ENOENT;
         goto cleanup;
     }
@@ -394,8 +393,10 @@ int gather_memblock_ids_for_node(uint32_t node_id, uint32_t *memblock_start_id,
     *memblock_start_id = start_id;
     *memblock_end_id = end_id;
 
-    syslog(LOG_DEBUG,"Found memblock start id: %"PRIu32" and end id: %"PRIu32"\n",
-           *memblock_start_id, *memblock_end_id);
+    SYSLOG_VERBOSE(LOG_DEBUG,
+                   "NUMA: Found memblock start id: %"PRIu32
+                   " and end id: %"PRIu32"\n",
+                   *memblock_start_id, *memblock_end_id);
 
 cleanup:
     closedir(dir_ptr);
@@ -415,21 +416,21 @@ int change_numa_node_state(uint32_t node_id, uint64_t region_gpu_size,
     status = gather_memblock_ids_for_node(node_id, &memblock_start_id,
                                           &memblock_end_id);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to get all memblock ID's for node%d\n",
+        syslog(LOG_ERR, "NUMA: Failed to get all memblock ID's for node%d\n",
                node_id);
         return status;
     }
 
     if (memblock_start_id > memblock_end_id) {
-        syslog(LOG_ERR, "Invalid memblock IDs were found for node%d\n",
+        syslog(LOG_ERR, "NUMA: Invalid memblock IDs were found for node%d\n",
                node_id);
         return -EINVAL;
     }
 
-    syslog(LOG_DEBUG,
-           "memblock ID range: %"PRIu32"-%"PRIu32
-           ", memblock size: 0x%"PRIx64"\n",
-           memblock_start_id, memblock_end_id, memblock_size);
+    SYSLOG_VERBOSE(LOG_DEBUG,
+                   "NUMA: memblock ID range: %"PRIu32"-%"PRIu32
+                   ", memblock size: 0x%"PRIx64"\n",
+                   memblock_start_id, memblock_end_id, memblock_size);
 
     if (new_state == NV_IOCTL_NUMA_STATUS_ONLINE) {
 
@@ -468,7 +469,8 @@ int change_numa_node_state(uint32_t node_id, uint64_t region_gpu_size,
      */
     if ((blocks_changed * memblock_size) < region_gpu_size) {
         syslog(LOG_ERR,
-               "Failed to change the state of 0x%"PRIx64" blocks of the memory to %s\n",
+               "NUMA: Failed to change the state of 0x%"PRIx64
+               " blocks of the memory to %s\n",
                (region_gpu_size / memblock_size) - blocks_changed,
                mem_state_to_string(new_state));
         return err_status;
@@ -476,7 +478,8 @@ int change_numa_node_state(uint32_t node_id, uint64_t region_gpu_size,
 
     if (blocks_changed == 0) {
         syslog(LOG_ERR,
-               "Failed to change the state of numa memory to %s: No blocks were changed\n",
+               "NUMA: Failed to change the state of numa memory to %s: "
+               "No blocks were changed\n",
                mem_state_to_string(new_state));
         return -ENOMEM;
     }
@@ -485,19 +488,51 @@ int change_numa_node_state(uint32_t node_id, uint64_t region_gpu_size,
 }
 
 static
+int offline_blacklisted_pages(nv_blacklist_addresses_t *blacklist_addresses)
+{
+    int index;
+    int status = 0;
+    char blacklisted_addr_str[BUF_SIZE];
+
+    for (index = 0; index < blacklist_addresses->numEntries; index++) {
+
+        sprintf(blacklisted_addr_str, "0x%"PRIx64,
+                blacklist_addresses->addresses[index]);
+
+        SYSLOG_VERBOSE(LOG_NOTICE,
+                       "NUMA: retiring memory address %s\n",
+                       blacklisted_addr_str);
+
+        status = write_string_to_file(MEMORY_HARD_OFFLINE_PATH_FMT,
+                                      blacklisted_addr_str,
+                                      strlen(blacklisted_addr_str));
+        if (status < 0) {
+            syslog(LOG_ERR,
+                   "NUMA: Failed to retire memory address %s: %s\n",
+                   blacklisted_addr_str, strerror(-status));
+            return status;
+        }
+    }
+
+    return status;
+}
+
+static
 int probe_node_memory(uint64_t probe_base_addr, uint64_t region_gpu_size,
                       uint64_t memblock_size)
 {
     int status = 0;
+    int memory_num;
     char start_addr_str[BUF_SIZE];
+    char memory_file_str[BUF_SIZE];
     uint64_t start_addr, numa_end_addr;
 
     numa_end_addr = probe_base_addr + region_gpu_size;
-    
-    if ((!NV_IS_ALIGNED(probe_base_addr, memblock_size)) || 
+
+    if ((!NV_IS_ALIGNED(probe_base_addr, memblock_size)) ||
         (!NV_IS_ALIGNED(numa_end_addr, memblock_size))) {
-        syslog(LOG_ERR, "Probe ranges not aligned to memblock size!\n");
-        return -EFAULT; 
+        syslog(LOG_ERR, "NUMA: Probe ranges not aligned to memblock size!\n");
+        return -EFAULT;
     }
 
     for (start_addr = probe_base_addr;
@@ -506,20 +541,34 @@ int probe_node_memory(uint64_t probe_base_addr, uint64_t region_gpu_size,
 
         sprintf(start_addr_str, "0x%"PRIx64, start_addr);
 
-        syslog(LOG_DEBUG, "Probing memory address %s\n", start_addr_str);
+        SYSLOG_VERBOSE(LOG_DEBUG, "NUMA: Probing memory address %s\n",
+                       start_addr_str);
 
         status = write_string_to_file(MEMORY_PROBE_PATH_FMT, start_addr_str,
                                       strlen(start_addr_str));
 
+        memory_num = start_addr / memblock_size;
+        sprintf(memory_file_str, MEMBLK_DIR_PATH_FMT, memory_num);
+
+        /* Check if memory node was created */
+        if (access(memory_file_str, F_OK) != 0) {
+            syslog(LOG_ERR,
+                   "NUMA: Failed to verify memory node %d was probed: %s\n",
+                   memory_num, strerror(errno));
+            status = -errno;
+            goto done;
+        }
+
         if (status == -EEXIST) {
-            syslog(LOG_INFO, "Memory address %s already probed\n",
-                   start_addr_str);
+            SYSLOG_VERBOSE(LOG_INFO,
+                           "NUMA: Memory address %s already probed\n",
+                           start_addr_str);
             status = 0;
             continue;
         } else if (status < 0) {
             syslog(LOG_ERR,
-                   "Failed to probe memory address %s\n",
-                   start_addr_str);
+                   "NUMA: Failed to probe memory address %s: %s\n",
+                   start_addr_str, strerror(-status));
             goto done;
         }
     }
@@ -539,7 +588,7 @@ int offline_memory(int fd)
     status = get_gpu_numa_info(fd, &numa_info_params);
     if (status < 0)
     {
-        syslog(LOG_ERR, "Failed to get device NUMA info\n");
+        syslog(LOG_ERR, "NUMA: Failed to get device NUMA info\n");
         return status;
     }
 
@@ -558,14 +607,15 @@ int offline_memory(int fd)
         case NV_IOCTL_NUMA_STATUS_ONLINE_IN_PROGRESS:
             break;
         case NV_IOCTL_NUMA_STATUS_OFFLINE_IN_PROGRESS:
-            syslog(LOG_ERR, "NUMA status %s is invalid\n",
+            syslog(LOG_ERR, "NUMA: NUMA status %s is invalid\n",
                    mem_state_to_string(numa_info_params.status));
             goto driver_fail;
     }
 
     status = set_gpu_numa_status(fd, NV_IOCTL_NUMA_STATUS_OFFLINE_IN_PROGRESS);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to set NUMA status to %s\n",
+        syslog(LOG_ERR,
+               "NUMA: Failed to set NUMA status to %s\n",
                mem_state_to_string(NV_IOCTL_NUMA_STATUS_OFFLINE_IN_PROGRESS));
         goto driver_fail;
     }
@@ -575,8 +625,7 @@ int offline_memory(int fd)
                                     numa_info_params.memblock_size,
                                     NV_IOCTL_NUMA_STATUS_OFFLINE);
     if (status < 0) {
-        syslog(LOG_ERR,
-               "Changing node%d state to %s failed\n",
+        syslog(LOG_ERR, "NUMA: Changing node%d state to %s failed\n",
                numa_info_params.nid,
                mem_state_to_string(NV_IOCTL_NUMA_STATUS_OFFLINE));
         goto offline_failed;
@@ -584,7 +633,7 @@ int offline_memory(int fd)
 
     status = set_gpu_numa_status(fd, NV_IOCTL_NUMA_STATUS_OFFLINE);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to set NUMA status to %s\n",
+        syslog(LOG_ERR, "NUMA: Failed to set NUMA status to %s\n",
                mem_state_to_string(NV_IOCTL_NUMA_STATUS_OFFLINE));
         goto driver_fail;
     }
@@ -595,7 +644,7 @@ int offline_memory(int fd)
 
 offline_failed:
     if (set_gpu_numa_status(fd, NV_IOCTL_NUMA_STATUS_OFFLINE_FAILED) < 0) {
-        syslog(LOG_ERR, "Failed to set NUMA status to %s\n",
+        syslog(LOG_ERR, "NUMA: Failed to set NUMA status to %s\n",
                mem_state_to_string(NV_IOCTL_NUMA_STATUS_OFFLINE_FAILED));
     }
 driver_fail:
@@ -603,7 +652,7 @@ driver_fail:
 }
 
 #define MEMORY_AUTO_ONLINE_WARNING_FMT                                      \
-    "%s state is online and the default zone is not movable (%s).\n"        \
+    "NUMA: %s state is online and the default zone is not movable (%s).\n"  \
     "This likely means that some non-NVIDIA software has auto-onlined\n"    \
     "the device memory before nvidia-persistenced could. Please check\n"    \
     "if the CONFIG_MEMORY_HOTPLUG_DEFAULT_ONLINE kernel config option\n"    \
@@ -628,7 +677,7 @@ int check_memory_auto_online(uint32_t node_id, NvCfgBool *auto_online_success)
 
     dir_ptr = opendir(numa_file_path);
     if (!dir_ptr) {
-        syslog(LOG_ERR, "Failed to open directory %s: %s\n",
+        syslog(LOG_ERR, "NUMA: Failed to open directory %s: %s\n",
                numa_file_path, strerror(errno));
         return -errno;
     }
@@ -650,14 +699,15 @@ int check_memory_auto_online(uint32_t node_id, NvCfgBool *auto_online_success)
                                        read_buf, sizeof(read_buf));
         if (status < 0) {
             syslog(LOG_ERR,
-                   "Failed to read %s state\n", dir_entry->d_name);
+                   "NUMA: Failed to read %s state\n", dir_entry->d_name);
             goto cleanup;
         }
 
         /* Check if state has already been auto onlined */
         if (strstr(read_buf, STATE_ONLINE)) {
 
-            syslog(LOG_NOTICE, "Device NUMA memory is already online\n");
+            SYSLOG_VERBOSE(LOG_NOTICE,
+                           "NUMA: Device NUMA memory is already online\n");
 
             sprintf(memory_file_path, MEMBLK_VALID_ZONES_PATH_FMT, block_id);
 
@@ -665,7 +715,7 @@ int check_memory_auto_online(uint32_t node_id, NvCfgBool *auto_online_success)
                                            read_buf, sizeof(read_buf));
             if (status < 0) {
                 syslog(LOG_ERR,
-                       "Failed to read %s valid_zones\n",
+                       "NUMA: Failed to read %s valid_zones\n",
                        dir_entry->d_name);
                 goto cleanup;
             }
@@ -682,6 +732,14 @@ int check_memory_auto_online(uint32_t node_id, NvCfgBool *auto_online_success)
         }
     }
 
+    /* Check if any memory nodes exist */
+    if (num_memory_node_in_dir == 0) {
+        syslog(LOG_ERR,
+               "NUMA: No memory nodes in node%d directory!\n", node_id);
+        status = -ENOENT;
+        goto cleanup;
+    }
+
     /* Check if all the memory are set to online movable */
     if (num_memory_online_movable == num_memory_node_in_dir) {
         *auto_online_success = NVCFG_TRUE;
@@ -694,9 +752,9 @@ cleanup:
 
 /*! @brief
  *  We assume the physical memory has been allocated from RM before calling this
- *  function. 
+ *  function.
  */
-NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
+NvPdStatus nvNumaOnlineMemory(NvCfgPciDevice *device_pci_info)
 {
     int fd;
     int status = 0;
@@ -705,15 +763,23 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
 
     memset(&numa_info_params, 0, sizeof(numa_info_params));
 
-    status = get_gpu_device_file_fd(domain, bus, slot, function, &fd);
+    status = get_gpu_device_file_fd(device_pci_info->domain,
+                                    device_pci_info->bus,
+                                    device_pci_info->slot,
+                                    device_pci_info->function,
+                                    &fd);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to get device file descriptor\n");
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Failed to get device file descriptor\n");
         return NVPD_ERR_NUMA_FAILURE;
     }
 
     status = get_gpu_numa_info(fd, &numa_info_params);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to get device NUMA info\n");
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Failed to get device NUMA info\n");
         goto driver_fail;
     }
 
@@ -731,8 +797,10 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
             goto done;
         case NV_IOCTL_NUMA_STATUS_ONLINE_IN_PROGRESS:
         case NV_IOCTL_NUMA_STATUS_OFFLINE_IN_PROGRESS:
-            syslog(LOG_ERR, "Device NUMA status %s is invalid\n",
-                   mem_state_to_string(numa_info_params.status));
+            syslog_device(device_pci_info,
+                          LOG_ERR,
+                          "NUMA: Device NUMA status %s is invalid\n",
+                          mem_state_to_string(numa_info_params.status));
             goto driver_fail;
     }
 
@@ -741,18 +809,24 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
         (numa_info_params.memblock_size == 0) ||
         (numa_info_params.numa_mem_addr == 0) ||
         (numa_info_params.numa_mem_size == 0)) {
-        syslog(LOG_ERR,
-               "Invalid device NUMA info. Nid: 0x%08x, memblock_size: 0x%"PRIx64
-               ", numa_mem_addr: 0x%"PRIx64", numa_mem_size: 0x%"PRIx64"\n",
-               numa_info_params.nid, numa_info_params.memblock_size,
-               numa_info_params.numa_mem_addr, numa_info_params.numa_mem_size);  
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Invalid device NUMA info. Nid: 0x%08x, "
+                      "memblock_size: 0x%"PRIx64", numa_mem_addr: 0x%"
+                      PRIx64", numa_mem_size: 0x%"PRIx64"\n",
+                      numa_info_params.nid,
+                      numa_info_params.memblock_size,
+                      numa_info_params.numa_mem_addr,
+                      numa_info_params.numa_mem_size);
         goto driver_fail;
     }
 
     status = set_gpu_numa_status(fd, NV_IOCTL_NUMA_STATUS_ONLINE_IN_PROGRESS);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to set device NUMA status to %s\n",
-               mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE_IN_PROGRESS));
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Failed to set device NUMA status to %s\n",
+                      mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE_IN_PROGRESS));
         goto driver_fail;
     }
 
@@ -761,7 +835,9 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
                         numa_info_params.memblock_size)) ||
         (!NV_IS_ALIGNED(numa_info_params.numa_mem_size,
                         numa_info_params.memblock_size))) {
-        syslog(LOG_ERR, "Onlining range is not aligned to memblock size!\n");
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Onlining range is not aligned to memblock size!\n");
         goto error;
     }
 
@@ -769,7 +845,9 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
                                numa_info_params.numa_mem_size,
                                numa_info_params.memblock_size);
     if (status < 0) {
-        syslog(LOG_ERR, "Probing memory failed: %d\n", status);
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Probing memory failed: %d\n", status);
         goto online_failed;
     }
 
@@ -778,15 +856,18 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
                                       &auto_online_success);
     if (status < 0) {
         if (status != -ENOTSUP) {
-            syslog(LOG_ERR,
-                   "Failed to check if probed memory has been auto-onlined\n");
+            syslog_device(device_pci_info,
+                          LOG_ERR,
+                          "NUMA: Failed to check if probed memory has "
+                          "been auto-onlined\n");
         }
         goto error;
     }
 
     /* If memory was auto-onlined to Movable, skip changing node state */
     if (auto_online_success) {
-        syslog(LOG_NOTICE, "All device NUMA memory onlined and movable\n");
+        syslog_device(device_pci_info, LOG_NOTICE,
+                      "NUMA: All device NUMA memory onlined and movable\n");
         goto set_driver_status;
     }
 
@@ -795,18 +876,29 @@ NvPdStatus nvNumaOnlineMemory(int domain, int bus, int slot, int function)
                                     numa_info_params.memblock_size,
                                     NV_IOCTL_NUMA_STATUS_ONLINE);
     if (status < 0) {
-        syslog(LOG_ERR,
-               "Changing node%d state to %s failed\n",
-               numa_info_params.nid,
-               mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE));
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Changing node%d state to %s failed\n",
+                      numa_info_params.nid,
+                      mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE));
         goto online_failed;
     }
 
 set_driver_status:
+    status = offline_blacklisted_pages(&numa_info_params.blacklist_addresses);
+    if (status < 0) {
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Offlining blacklisted pages failed\n");
+        goto online_failed;
+    }
+
     status = set_gpu_numa_status(fd, NV_IOCTL_NUMA_STATUS_ONLINE);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to set device NUMA status to %s\n",
-               mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE));
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Failed to set device NUMA status to %s\n",
+                      mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE));
 
     }
 
@@ -820,33 +912,43 @@ online_failed:
 error:
     status = set_gpu_numa_status(fd, NV_IOCTL_NUMA_STATUS_ONLINE_FAILED);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to set NUMA status to %s\n",
-               mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE_FAILED));  
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Failed to set NUMA status to %s\n",
+                      mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE_FAILED));
     }
 driver_fail:
     close(fd);
     return NVPD_ERR_NUMA_FAILURE;
 }
 
-NvPdStatus nvNumaOfflineMemory(int domain, int bus, int slot, int function)
+NvPdStatus nvNumaOfflineMemory(NvCfgPciDevice *device_pci_info)
 {
     int fd;
     int status = 0;
 
-    status = get_gpu_device_file_fd(domain, bus, slot, function, &fd);
+    status = get_gpu_device_file_fd(device_pci_info->domain,
+                                    device_pci_info->bus,
+                                    device_pci_info->slot,
+                                    device_pci_info->function,
+                                    &fd);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to get device file descriptor\n");
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Failed to get device file descriptor\n");
         return NVPD_ERR_NUMA_FAILURE;
     }
 
     status = offline_memory(fd);
     if (status < 0) {
-        syslog(LOG_ERR, "Failed to offline memory\n");
+        syslog_device(device_pci_info,
+                      LOG_ERR,
+                      "NUMA: Failed to offline memory\n");
         goto done;
     }
 
     close(fd);
-    return NVPD_SUCCESS; 
+    return NVPD_SUCCESS;
 
 done:
     close(fd);
