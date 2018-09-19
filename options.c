@@ -42,15 +42,13 @@
 #define TAB    "  "
 #define BIGTAB "      "
 
-extern const char *pNV_ID;
-
 /*
  * print_version() - print basic version information about the utility.
  */
 static void print_version(void)
 {
     nv_info_msg(NULL, "");
-    nv_info_msg(NULL, "%s", pNV_ID);
+    nv_info_msg(NULL, "%s", NV_ID_STRING);
     nv_info_msg(NULL, "");
     nv_info_msg(TAB, "The NVIDIA Persistence Daemon.");
     nv_info_msg(NULL, "");
