@@ -66,7 +66,22 @@ static const NVGetoptOption __options[] = {
       "specified by the &USERNAME& argument. This user must have write access "
       "to the /var/run/nvidia-persistenced directory. If this directory does "
       "not exist, nvidia-persistenced will attempt to create it prior to "
-      "changing the process user and group IDs." },
+      "changing the process user and group IDs. "
+      "If this option is not given, nvidia-persistenced will not attempt "
+      "to change the process user ID." },
+
+    { "group",
+      'g',
+      NVGETOPT_STRING_ARGUMENT | NVGETOPT_HELP_ALWAYS,
+      "GROUPNAME",
+      "Runs nvidia-persistenced with the group permissions of the group "
+      "specified by the &GROUPNAME& argument. "
+      "If both this option and the --user option are given, this option "
+      "will take precedence when determining the group ID to use. "
+      "If this option is not given, nvidia-persistenced will use the "
+      "primary group ID of the user specified by the --user option argument. "
+      "If the --user option is also not given, nvidia-persistenced will not "
+      "attempt to change the process group ID." },
 
     { "persistence-mode",
       PERSISTENCE_MODE_OPTION,

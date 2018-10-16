@@ -26,6 +26,7 @@
  */
 
 #include <errno.h>
+#include <grp.h>
 #include <pwd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,6 +114,8 @@ void parse_options(int argc, char *argv[], NvPdOptions *options)
     int boolval;
     char *strval;
     struct passwd *pw_entry;
+    struct group *gr_entry;
+    int group_specified = 0;
 
     setup_option_defaults(options);
 
@@ -143,12 +146,25 @@ void parse_options(int argc, char *argv[], NvPdOptions *options)
             case 'u':
                 pw_entry = getpwnam(strval);
                 if (pw_entry == NULL) {
-                    nv_error_msg("Failed to find user ID of user '%s': %s", strval,
-                                 strerror(errno));
+                    nv_error_msg("Failed to find user ID of user '%s': %s",
+                                 strval, strerror(errno));
                     exit(EXIT_FAILURE);
                 }
                 options->uid = pw_entry->pw_uid;
-                options->gid = pw_entry->pw_gid;
+                if (!group_specified) {
+                    options->gid = pw_entry->pw_gid;
+                }
+                break;
+            case 'g':
+                gr_entry = getgrnam(strval);
+                if (gr_entry == NULL) {
+                    nv_error_msg("Failed to find group ID of group '%s': %s",
+                                 strval, strerror(errno));
+                    exit(EXIT_FAILURE);
+                }
+                /* overrides the gid from the -u option, if already given */
+                options->gid = gr_entry->gr_gid;
+                group_specified = 1;
                 break;
             case PERSISTENCE_MODE_OPTION:
                 if (boolval) {

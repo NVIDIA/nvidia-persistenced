@@ -63,6 +63,18 @@ struct GetPersistenceModeRes {
 };
 typedef struct GetPersistenceModeRes GetPersistenceModeRes;
 
+enum NvNumaStatus {
+	NV_NUMA_STATUS_OFFLINE = 0,
+	NV_NUMA_STATUS_ONLINE = 1,
+};
+typedef enum NvNumaStatus NvNumaStatus;
+
+struct SetNumaStatusArgs {
+	NvPciDevice device;
+	NvNumaStatus status;
+};
+typedef struct SetNumaStatusArgs SetNumaStatusArgs;
+
 #define NVPD_PROG 35006
 #define VersionOne 1
 
@@ -84,6 +96,26 @@ extern  GetPersistenceModeRes * nvpdgetpersistencemode_1();
 extern  GetPersistenceModeRes * nvpdgetpersistencemode_1_svc();
 extern int nvpd_prog_1_freeresult ();
 #endif /* K&R C */
+#define VersionTwo 2
+
+#if defined(__STDC__) || defined(__cplusplus)
+#define nvPdSetPersistenceModeOnly 1
+extern  NvPdStatus * nvpdsetpersistencemodeonly_2(SetPersistenceModeArgs *, CLIENT *);
+extern  NvPdStatus * nvpdsetpersistencemodeonly_2_svc(SetPersistenceModeArgs *, struct svc_req *);
+#define nvPdSetNumaStatus 2
+extern  NvPdStatus * nvpdsetnumastatus_2(SetNumaStatusArgs *, CLIENT *);
+extern  NvPdStatus * nvpdsetnumastatus_2_svc(SetNumaStatusArgs *, struct svc_req *);
+extern int nvpd_prog_2_freeresult (SVCXPRT *, xdrproc_t, caddr_t);
+
+#else /* K&R C */
+#define nvPdSetPersistenceModeOnly 1
+extern  NvPdStatus * nvpdsetpersistencemodeonly_2();
+extern  NvPdStatus * nvpdsetpersistencemodeonly_2_svc();
+#define nvPdSetNumaStatus 2
+extern  NvPdStatus * nvpdsetnumastatus_2();
+extern  NvPdStatus * nvpdsetnumastatus_2_svc();
+extern int nvpd_prog_2_freeresult ();
+#endif /* K&R C */
 
 /* the xdr functions */
 
@@ -94,6 +126,8 @@ extern  bool_t xdr_NvPersistenceMode (XDR *, NvPersistenceMode*);
 extern  bool_t xdr_SetPersistenceModeArgs (XDR *, SetPersistenceModeArgs*);
 extern  bool_t xdr_GetPersistenceModeArgs (XDR *, GetPersistenceModeArgs*);
 extern  bool_t xdr_GetPersistenceModeRes (XDR *, GetPersistenceModeRes*);
+extern  bool_t xdr_NvNumaStatus (XDR *, NvNumaStatus*);
+extern  bool_t xdr_SetNumaStatusArgs (XDR *, SetNumaStatusArgs*);
 
 #else /* K&R C */
 extern bool_t xdr_NvPdStatus ();
@@ -102,6 +136,8 @@ extern bool_t xdr_NvPersistenceMode ();
 extern bool_t xdr_SetPersistenceModeArgs ();
 extern bool_t xdr_GetPersistenceModeArgs ();
 extern bool_t xdr_GetPersistenceModeRes ();
+extern bool_t xdr_NvNumaStatus ();
+extern bool_t xdr_SetNumaStatusArgs ();
 
 #endif /* K&R C */
 
