@@ -54,8 +54,6 @@ typedef struct
     NvCfgDeviceHandle nv_cfg_handle;
     NvCfgPciDevice pci_info;
     NvPersistenceMode mode;
-    NvNumaStatus numa_status;
-    NvNumaDevice numa_info;
 } NvPdDevice;
 
 /*
@@ -71,8 +69,8 @@ static int remove_dir = 0;
 
 static struct {
     NvCfgBool (*get_pci_devices)(int *, NvCfgPciDevice **);
-    NvCfgBool (*attach_pci_device)(int, int, int, int, NvCfgDeviceHandle *);
-    NvCfgBool (*detach_device)(NvCfgDeviceHandle);
+    NvCfgBool (*open_pci_device)(int, int, int, int, NvCfgDeviceHandle *);
+    NvCfgBool (*close_device)(NvCfgDeviceHandle);
 } nv_cfg_api;
 
 /*
@@ -80,13 +78,10 @@ static struct {
  */
 static int daemonize(uid_t uid, gid_t gid);
 static int load_nvidia_cfg_sym(void **sym_ptr, const char *sym_name);
-static NvPdDevice *get_device(int domain, int bus, int slot);
 static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path);
 static NvPdStatus setup_devices(NvPersistenceMode default_mode);
 static NvPdStatus setup_rpc(void);
 static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode);
-static NvPdStatus set_device_numa_status(NvPdDevice *device,
-                                         NvNumaStatus numa_status);
 
 /*
  * nvPdSetDevicePersistenceMode() - This function implements the daemon
@@ -99,75 +94,23 @@ static NvPdStatus set_device_numa_status(NvPdDevice *device,
 NvPdStatus nvPdSetDevicePersistenceMode(int domain, int bus, int slot,
                                         int function, NvPersistenceMode mode)
 {
-    NvPdStatus ret;
-    NvPersistenceMode old_mode;
-    NvPdDevice *device = get_device(domain, bus, slot);
+    int i = 0;
+    NvPdStatus ret = NVPD_ERR_DEVICE_NOT_FOUND;
 
-    if (device == NULL) {
-        return NVPD_ERR_DEVICE_NOT_FOUND;
+    if (devices == NULL) {
+        return ret;
     }
 
-    old_mode = device->mode;
-
-    /*
-     * Set the device mode always before changing the NUMA state.
-     * For onlining, this is needed since libnvidia-cfg needs to create the
-     * device nodes before nvidia-numa can interact with them.
-     * For offlining, this is needed since the libnvidia-cfg device handle
-     * will need to be released for nvidia-numa to proceed with the offlining.
-     */
-    ret = set_device_mode(device, mode);
-    if (ret == NVPD_SUCCESS) {
-        NvNumaStatus status = (mode == NV_PERSISTENCE_MODE_ENABLED) ?
-                                NV_NUMA_STATUS_ONLINE : NV_NUMA_STATUS_OFFLINE;
-        ret = set_device_numa_status(device, status);
-        if ((ret != NVPD_SUCCESS) && (old_mode != mode)) {
-            (void) set_device_mode(device, old_mode);
+    for (i = 0; i < num_devices; i++) {
+        if ((devices[i].pci_info.domain == domain) &&
+            (devices[i].pci_info.bus == bus) &&
+            (devices[i].pci_info.slot == slot)) {
+            ret = set_device_mode(&devices[i], mode);
+            break;
         }
     }
 
     return ret;
-}
-
-/*
- * nvPdSetDevicePersistenceModeOnly() - This function implements the daemon
- * command to set the persistence mode of the device at the specified PCI
- * location, without affecting the NUMA status of the device.
- *
- * The function parameter is ignored for the time being, and provided for
- * completeness of the API.
- */
-NvPdStatus nvPdSetDevicePersistenceModeOnly(int domain, int bus, int slot,
-                                            int function,
-                                            NvPersistenceMode mode)
-{
-    NvPdDevice *device = get_device(domain, bus, slot);
-
-    if (device == NULL) {
-        return NVPD_ERR_DEVICE_NOT_FOUND;
-    }
-
-    return set_device_mode(device, mode);
-}
-
-/*
- * nvPdSetDeviceNumaStatus() - This function implements the daemon command to
- * set the NUMA status of the device at the specified PCI location, without
- * affecting the persistence mode of the device.
- *
- * The function parameter is ignored for the time being, and provided for
- * completeness of the API.
- */
-NvPdStatus nvPdSetDeviceNumaStatus(int domain, int bus, int slot, int function,
-                                   NvNumaStatus status)
-{
-    NvPdDevice *device = get_device(domain, bus, slot);
-
-    if (device == NULL) {
-        return NVPD_ERR_DEVICE_NOT_FOUND;
-    }
-
-    return set_device_numa_status(device, status);
 }
 
 /*
@@ -181,35 +124,24 @@ NvPdStatus nvPdSetDeviceNumaStatus(int domain, int bus, int slot, int function,
 NvPdStatus nvPdGetDevicePersistenceMode(int domain, int bus, int slot,
                                         int function, NvPersistenceMode *mode)
 {
-    NvPdDevice *device = get_device(domain, bus, slot);
+    int i = 0;
+    NvPdStatus ret = NVPD_ERR_DEVICE_NOT_FOUND;
 
-    if (device == NULL) {
-        return NVPD_ERR_DEVICE_NOT_FOUND;
+    if (devices == NULL) {
+        return ret;
     }
 
-    *mode = device->mode;
-    return NVPD_SUCCESS;
-}
-
-/*
- * get_device() - looks up and returns a pointer to the NvPdDevice structure
- * for the device at the specified PCI location.
- */
-static NvPdDevice *get_device(int domain, int bus, int slot)
-{
-    int i;
-
-    if (devices != NULL) {
-        for (i = 0; i < num_devices; i++) {
-            if ((devices[i].pci_info.domain == domain) &&
-                (devices[i].pci_info.bus == bus) &&
-                (devices[i].pci_info.slot == slot)) {
-                return &devices[i];
-            }
+    for (i = 0; i < num_devices; i++) {
+        if ((devices[i].pci_info.domain == domain) &&
+            (devices[i].pci_info.bus == bus) &&
+            (devices[i].pci_info.slot == slot)) {
+            *mode = devices[i].mode;
+            ret = NVPD_SUCCESS;
+            break;
         }
     }
 
-    return NULL;
+    return ret;
 }
 
 /*
@@ -267,7 +199,7 @@ static NvPdStatus wait_for_init_complete(int pipe_read_fd)
 /*
  * set_device_mode() - This function performs the heavy lifting in enabling or
  * disabling device mode for a given device by performing mode checks and
- * calling libnvidia-cfg to attach and detach the device.
+ * calling libnvidia-cfg to open and close the device.
  */
 static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
 {
@@ -284,12 +216,22 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
     switch (mode) {
 
     case NV_PERSISTENCE_MODE_DISABLED:
-        /* If the new mode is disabled, we must detach the device. */
-        success = nv_cfg_api.detach_device(device->nv_cfg_handle);
+        /* Try to offline memory. On failure, bail out and don't close. */
+        status = nvNumaOfflineMemory(&device->pci_info);
+        if (status != NVPD_SUCCESS) {
+            syslog_device(&device->pci_info, LOG_ERR,
+                          "failed to offline memory. Bailing out of close.");
+            break;
+        }
+
+        /* If the new mode is disabled, we must close the device. */
+        success = nv_cfg_api.close_device(device->nv_cfg_handle);
         if (!success) {
-            syslog_device(&device->pci_info, LOG_ERR, "failed to detach.");
+            syslog_device(&device->pci_info, LOG_ERR, "failed to close.");
             status = NVPD_ERR_DRIVER;
         } else {
+            SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
+                                  "persistence mode disabled.");
             device->nv_cfg_handle = NULL;
         }
 
@@ -297,15 +239,35 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
 
     case NV_PERSISTENCE_MODE_ENABLED:
 
-        /* If the new mode is enabled, we must attach the device. */
-        success = nv_cfg_api.attach_pci_device(device->pci_info.domain,
-                                               device->pci_info.bus,
-                                               device->pci_info.slot,
-                                               device->pci_info.function,
-                                               &device->nv_cfg_handle);
+        /* If the new mode is enabled, we must open the device. */
+        success = nv_cfg_api.open_pci_device(device->pci_info.domain,
+                                             device->pci_info.bus,
+                                             device->pci_info.slot,
+                                             device->pci_info.function,
+                                             &device->nv_cfg_handle);
         if (!success) {
-            syslog_device(&device->pci_info, LOG_ERR, "failed to attach.");
+            syslog_device(&device->pci_info, LOG_ERR, "failed to open.");
             status = NVPD_ERR_DRIVER;
+        }
+        else {
+            SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
+                                  "persistence mode enabled.");
+
+            /* Try to online memory. On failure, close the device. */
+            status = nvNumaOnlineMemory(&device->pci_info);
+            if (status != NVPD_SUCCESS) {
+                syslog_device(&device->pci_info, LOG_ERR,
+                              "failed to online memory.");
+                success = nv_cfg_api.close_device(device->nv_cfg_handle);
+                if (!success) {
+                    syslog_device(&device->pci_info, LOG_ERR,
+                                  "failed to close.");
+                } else {
+                    SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
+                                          "persistence mode disabled.");
+                    device->nv_cfg_handle = NULL;
+                }
+            }
         }
 
         break;
@@ -321,68 +283,6 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
 
     if (status == NVPD_SUCCESS) {
         device->mode = mode;
-        SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
-                              "persistence mode %s.",
-                              (mode == NV_PERSISTENCE_MODE_ENABLED) ?
-                                "enabled" : "disabled");
-    }
-
-    return status;
-}
-
-/*
- * set_device_numa_status() - This function invokes the nvidia-numa functions
- * for onlining or offlining device NUMA memory for a given device.
- */
-static NvPdStatus set_device_numa_status(NvPdDevice *device,
-                                         NvNumaStatus numa_status)
-{
-    NvPdStatus status = NVPD_SUCCESS;
-
-    /* If the device is already in the state specified, just abort */
-    if (numa_status == device->numa_status) {
-        SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
-                              "NUMA memory already in requested state.");
-        return status;
-    }
-
-    switch (numa_status) {
-
-    case NV_NUMA_STATUS_OFFLINE:
-
-        status = nvNumaOfflineMemory(&device->numa_info);
-        if (status != NVPD_SUCCESS) {
-            syslog_device(&device->pci_info, LOG_ERR,
-                          "failed to offline memory.\n");
-        }
-
-        break;
-
-    case NV_NUMA_STATUS_ONLINE:
-
-        status = nvNumaOnlineMemory(&device->numa_info);
-        if (status != NVPD_SUCCESS) {
-            syslog_device(&device->pci_info, LOG_ERR,
-                          "failed to online memory.\n");
-        }
-
-        break;
-
-    default:
-
-        syslog_device(&device->pci_info, LOG_ERR,
-                      "requested invalid NUMA status %d", numa_status);
-        status = NVPD_ERR_INVALID_ARGUMENT;
-        break;
-
-    }
-
-    if (status == NVPD_SUCCESS) {
-        device->numa_status = numa_status;
-        SYSLOG_DEVICE_VERBOSE(&device->pci_info, LOG_NOTICE,
-                              "NUMA memory %s.",
-                              (numa_status == NV_NUMA_STATUS_ONLINE) ?
-                                "onlined" : "offlined");
     }
 
     return status;
@@ -405,9 +305,8 @@ static void shutdown_daemon(int status)
 
     /* Clean up and remove the RPC socket */
     if (socket_fd != -1) {
-        /* Unregister any mappings to the RPC dispatch routines */
+        /* Unregister any mappings to the RPC dispatch routine */
         svc_unregister(NVPD_PROG, VersionOne);
-        svc_unregister(NVPD_PROG, VersionTwo);
 
         if (close(socket_fd) < 0) {
             syslog(LOG_ERR, "Failed to close socket: %s",
@@ -426,11 +325,8 @@ static void shutdown_daemon(int status)
     if (devices != NULL) {
         for (i = 0; i < num_devices; i++) {
             if (devices[i].nv_cfg_handle != NULL) {
-                NvPersistenceMode mode = NV_PERSISTENCE_MODE_DISABLED;
-                (void) nvPdSetDevicePersistenceMode(devices[i].pci_info.domain,
-                                                    devices[i].pci_info.bus,
-                                                    devices[i].pci_info.slot,
-                                                    0, mode);
+                (void) set_device_mode(&devices[i],
+                                       NV_PERSISTENCE_MODE_DISABLED);
             }
         }
 
@@ -539,10 +435,10 @@ static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path)
     /* Attempt to load all symbols required. */
     status |= load_nvidia_cfg_sym((void **)&nv_cfg_api.get_pci_devices,
                                   "nvCfgGetPciDevices");
-    status |= load_nvidia_cfg_sym((void **)&nv_cfg_api.attach_pci_device,
-                                  "nvCfgAttachPciDevice");
-    status |= load_nvidia_cfg_sym((void **)&nv_cfg_api.detach_device,
-                                  "nvCfgDetachDevice");
+    status |= load_nvidia_cfg_sym((void **)&nv_cfg_api.open_pci_device,
+                                  "nvCfgOpenPciDevice");
+    status |= load_nvidia_cfg_sym((void **)&nv_cfg_api.close_device,
+                                  "nvCfgCloseDevice");
 
     if (status != 0) {
         /* Missing symbols are already called out by load_nvidia_cfg_sym(). */
@@ -593,18 +489,10 @@ static NvPdStatus setup_devices(NvPersistenceMode default_mode)
         devices[i].pci_info.function = 0;
         devices[i].mode = NV_PERSISTENCE_MODE_DISABLED;
 
-        /* Initialize nvidia-numa state */
-        devices[i].numa_status = NV_NUMA_STATUS_OFFLINE;
-        devices[i].numa_info.fd = -1;
-        devices[i].numa_info.pci_info = &devices[i].pci_info;
-
         SYSLOG_DEVICE_VERBOSE(&(devices[i].pci_info), LOG_DEBUG, "registered");
 
         if (default_mode != NV_PERSISTENCE_MODE_DISABLED) {
-            (void) nvPdSetDevicePersistenceMode(devices[i].pci_info.domain,
-                                                devices[i].pci_info.bus,
-                                                devices[i].pci_info.slot, 0,
-                                                default_mode);
+            (void) set_device_mode(&devices[i], default_mode);
         }
     }
 
@@ -646,16 +534,11 @@ static NvPdStatus setup_rpc()
     }
 
     if (!svc_register(transp, NVPD_PROG, VersionOne, nvpd_prog_1, 0)) {
-        syslog(LOG_ERR, "Failed to register RPC V1 service");
+        syslog(LOG_ERR, "Failed to register RPC service");
         return NVPD_ERR_RPC;
     }
 
-    if (!svc_register(transp, NVPD_PROG, VersionTwo, nvpd_prog_2, 0)) {
-        syslog(LOG_ERR, "Failed to register RPC V2 service");
-        return NVPD_ERR_RPC;
-    }
-
-    SYSLOG_VERBOSE(LOG_INFO, "Local RPC services initialized");
+    SYSLOG_VERBOSE(LOG_INFO, "Local RPC service initialized");
 
     return NVPD_SUCCESS;
 }

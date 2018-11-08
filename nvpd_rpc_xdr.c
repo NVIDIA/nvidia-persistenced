@@ -68,21 +68,3 @@ xdr_GetPersistenceModeRes (XDR *xdrs, GetPersistenceModeRes *objp)
 	}
 	return TRUE;
 }
-
-bool_t
-xdr_NvNumaStatus (XDR *xdrs, NvNumaStatus *objp)
-{
-	 if (!xdr_enum (xdrs, (enum_t *) objp))
-		 return FALSE;
-	return TRUE;
-}
-
-bool_t
-xdr_SetNumaStatusArgs (XDR *xdrs, SetNumaStatusArgs *objp)
-{
-	 if (!xdr_NvPciDevice (xdrs, &objp->device))
-		 return FALSE;
-	 if (!xdr_NvNumaStatus (xdrs, &objp->status))
-		 return FALSE;
-	return TRUE;
-}

@@ -47,15 +47,9 @@ NvPdStatus nvPdSetDevicePersistenceMode(int domain, int bus, int slot,
 NvPdStatus nvPdGetDevicePersistenceMode(int domain, int bus, int slot,
                                         int function,
                                         NvPersistenceMode *mode);
-NvPdStatus nvPdSetDevicePersistenceModeOnly(int domain, int bus, int slot,
-                                            int function,
-                                            NvPersistenceMode mode);
-NvPdStatus nvPdSetDeviceNumaStatus(int domain, int bus, int slot,
-                                   int function, NvNumaStatus status);
 
-/* RPC Service Routines */
+/* RPC Service Routine */
 extern void nvpd_prog_1(struct svc_req *rqstp, register SVCXPRT *transp);
-extern void nvpd_prog_2(struct svc_req *rqstp, register SVCXPRT *transp);
 
 /* Commandline Parsing */
 extern void parse_options(int argc, char *argv[], NvPdOptions *);

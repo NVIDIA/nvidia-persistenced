@@ -69,15 +69,8 @@ typedef struct nv_ioctl_set_numa_status
     int status;
 } nv_ioctl_set_numa_status_t;
 
-/* per-device NUMA context */
-typedef struct
-{
-    int fd;
-    NvCfgPciDevice *pci_info;
-} NvNumaDevice;
+NvPdStatus nvNumaOnlineMemory(NvCfgPciDevice *device_pci_info);
 
-NvPdStatus nvNumaOnlineMemory(NvNumaDevice *numa_info);
-
-NvPdStatus nvNumaOfflineMemory(NvNumaDevice *numa_info);
+NvPdStatus nvNumaOfflineMemory(NvCfgPciDevice *device_pci_info);
 
 #endif

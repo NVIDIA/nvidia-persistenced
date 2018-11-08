@@ -77,7 +77,7 @@ is not installed, the daemon may not be able to start properly if it is not run 
 The source code to
 .B nvidia\-persistenced
 is available here:
-.__URL__ ftp://download.nvidia.com/XFree86/nvidia-persistenced/
+.__URL__ https://download.nvidia.com/XFree86/nvidia-persistenced/
 .PP
 
 .SH EXAMPLES
