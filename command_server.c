@@ -68,3 +68,41 @@ GetPersistenceModeRes* nvpdgetpersistencemode_1_svc(GetPersistenceModeArgs *args
 
     return &result;
 }
+
+
+/*!
+ * nvpdsetpersistencemodeonly_2_svc() - This service is an RPC function
+ * implementation to set the persistence mode of a specific device
+ * without affecting the NUMA status of the device.
+ */
+NvPdStatus* nvpdsetpersistencemodeonly_2_svc(SetPersistenceModeArgs *args,
+                                             struct svc_req *req)
+{
+    static NvPdStatus result;
+
+    result = nvPdSetDevicePersistenceModeOnly(args->device.domain,
+                                              args->device.bus,
+                                              args->device.slot,
+                                              args->device.function,
+                                              args->mode);
+
+    return &result;
+}
+
+/*!
+ * nvpdsetnumastatus_2_svc() - This service is an RPC function
+ * implementation to set the NUMA status of the device.
+ */
+NvPdStatus* nvpdsetnumastatus_2_svc(SetNumaStatusArgs *args,
+                                    struct svc_req *req)
+{
+    static NvPdStatus result;
+
+    result = nvPdSetDeviceNumaStatus(args->device.domain,
+                                     args->device.bus,
+                                     args->device.slot,
+                                     args->device.function,
+                                     args->status);
+
+    return &result;
+}

@@ -754,10 +754,11 @@ cleanup:
  *  We assume the physical memory has been allocated from RM before calling this
  *  function.
  */
-NvPdStatus nvNumaOnlineMemory(NvCfgPciDevice *device_pci_info)
+NvPdStatus nvNumaOnlineMemory(NvNumaDevice *numa_info)
 {
     int fd;
     int status = 0;
+    NvCfgPciDevice *device_pci_info = numa_info->pci_info;
     NvCfgBool auto_online_success;
     nv_ioctl_numa_info_t numa_info_params;
 
@@ -899,12 +900,12 @@ set_driver_status:
                       LOG_ERR,
                       "NUMA: Failed to set device NUMA status to %s\n",
                       mem_state_to_string(NV_IOCTL_NUMA_STATUS_ONLINE));
-
+        goto online_failed;
     }
 
     syslog(LOG_NOTICE, "NUMA: Memory onlining completed!\n");
 done:
-    close(fd);
+    numa_info->fd = fd;
     return NVPD_SUCCESS;
 
 online_failed:
@@ -922,20 +923,16 @@ driver_fail:
     return NVPD_ERR_NUMA_FAILURE;
 }
 
-NvPdStatus nvNumaOfflineMemory(NvCfgPciDevice *device_pci_info)
+NvPdStatus nvNumaOfflineMemory(NvNumaDevice *numa_info)
 {
-    int fd;
+    int fd = numa_info->fd;
     int status = 0;
+    NvCfgPciDevice *device_pci_info = numa_info->pci_info;
 
-    status = get_gpu_device_file_fd(device_pci_info->domain,
-                                    device_pci_info->bus,
-                                    device_pci_info->slot,
-                                    device_pci_info->function,
-                                    &fd);
-    if (status < 0) {
+    if (fd < 0) {
         syslog_device(device_pci_info,
                       LOG_ERR,
-                      "NUMA: Failed to get device file descriptor\n");
+                      "NUMA: no file descriptor\n");
         return NVPD_ERR_NUMA_FAILURE;
     }
 
@@ -944,13 +941,11 @@ NvPdStatus nvNumaOfflineMemory(NvCfgPciDevice *device_pci_info)
         syslog_device(device_pci_info,
                       LOG_ERR,
                       "NUMA: Failed to offline memory\n");
-        goto done;
+        /* Do not close the fd, to avoid shutting down the device */
+        return NVPD_ERR_NUMA_FAILURE;
     }
 
     close(fd);
+    numa_info->fd = -1;
     return NVPD_SUCCESS;
-
-done:
-    close(fd);
-    return NVPD_ERR_NUMA_FAILURE;
 }
