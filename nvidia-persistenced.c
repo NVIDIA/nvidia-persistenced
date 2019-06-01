@@ -711,9 +711,6 @@ static int daemonize(uid_t uid, gid_t gid)
     sigemptyset(&signal_action.sa_mask);
     signal_action.sa_flags = 0;
 
-    sigaction(SIGINT,  &signal_action, NULL);
-    sigaction(SIGTERM, &signal_action, NULL);
-
     /*
      * Set up the init pipe for coordinating daemon init with main process
      * return.
@@ -748,6 +745,21 @@ static int daemonize(uid_t uid, gid_t gid)
         exit((init_status == NVPD_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE);
     }
 
+    if (verbose) {
+        log_mask = LOG_UPTO(LOG_DEBUG);
+    } else {
+        log_mask = LOG_UPTO(LOG_NOTICE);
+    }
+
+    setlogmask(log_mask);
+
+    /* Setup syslog connection */
+    openlog(NVPD_DAEMON_NAME, 0, LOG_DAEMON);
+    SYSLOG_VERBOSE(LOG_INFO, "Verbose syslog connection opened");
+
+    sigaction(SIGINT,  &signal_action, NULL);
+    sigaction(SIGTERM, &signal_action, NULL);
+
     /* Reset default file permissions */
     umask(0);
 
@@ -768,18 +780,6 @@ static int daemonize(uid_t uid, gid_t gid)
 
     /* Close the read end of the init pipe */
     close(pipe_read_fd);
-
-    if (verbose) {
-        log_mask = LOG_UPTO(LOG_DEBUG);
-    } else {
-        log_mask = LOG_UPTO(LOG_NOTICE);
-    }
-
-    setlogmask(log_mask);
-
-    /* Setup syslog connection */
-    openlog(NVPD_DAEMON_NAME, 0, LOG_DAEMON);
-    SYSLOG_VERBOSE(LOG_INFO, "Verbose syslog connection opened");
 
     /* Go somewhere that we won't be unmounted */
     if (chdir("/") < 0) {
