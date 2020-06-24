@@ -100,6 +100,17 @@ ifneq ($(TARGET_OS),FreeBSD)
   LIBS += -ldl
 endif
 
+PKG_CONFIG ?= pkg-config
+
+USE_TIRPC ?= $(shell $(PKG_CONFIG) --exists libtirpc && echo 1)
+
+ifeq ($(USE_TIRPC),1)
+  TIRPC_LDFLAGS ?= $(shell $(PKG_CONFIG) --libs libtirpc)
+  TIRPC_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags libtirpc)
+  $(call BUILD_OBJECT_LIST,$(SRC)): CFLAGS += $(TIRPC_CFLAGS)
+  LIBS += $(TIRPC_LDFLAGS)
+endif
+
 ##############################################################################
 # build rules
 ##############################################################################

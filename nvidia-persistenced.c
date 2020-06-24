@@ -689,7 +689,7 @@ static void signal_handler(int signal)
  */
 static int daemonize(uid_t uid, gid_t gid)
 {
-    char pid_str[10];
+    char pid_str[13];
     struct sigaction signal_action;
     sigset_t signal_set;
     int init_pipe_fds[2];
