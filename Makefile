@@ -85,9 +85,9 @@ common_cflags += -I $(COMMON_UTILS_DIR)
 common_cflags += -I $(NVIDIA_CFG_DIR)
 common_cflags += -I $(NVIDIA_NUMA_DIR)
 common_cflags += -I $(RPC_DIR)
+common_cflags += -I $(OUTPUTDIR)
 common_cflags += -I .
 
-include version.mk
 common_cflags += -DPROGRAM_NAME=\"$(NVIDIA_PERSISTENCED_PROGRAM_NAME)\"
 common_cflags += -D_BSD_SOURCE
 common_cflags += -D_XOPEN_SOURCE=500
@@ -172,4 +172,4 @@ $(MANPAGE_not_gzipped): nvidia-persistenced.1.m4 $(OPTIONS_1_INC) $(VERSION_MK)
 	  $< > $@
 
 $(MANPAGE_gzipped): $(MANPAGE_not_gzipped)
-	$(GZIP_CMD) -9f < $< > $@
+	$(GZIP_CMD) -9nf < $< > $@
