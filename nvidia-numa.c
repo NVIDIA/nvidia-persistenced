@@ -38,6 +38,7 @@
 #include <errno.h>
 
 #include "common-utils.h"
+#include "nv-ioctl-numa.h"
 #include "nvidia-numa.h"
 
 #define NV_DEVICE_INFO_PATH_FMT \
@@ -57,14 +58,11 @@
 #define STATE_ONLINE                 "online"
 #define VALID_MOVABLE_STATE          "Movable"
 
-#define NV_IOCTL_MAGIC               'F'
-#define NV_IOCTL_BASE                200
-#define NV_ESC_NUMA_INFO             (NV_IOCTL_BASE + 15)
-#define NV_ESC_SET_NUMA_STATUS       (NV_IOCTL_BASE + 16)
-
 #ifndef NV_IS_ALIGNED
 #define NV_IS_ALIGNED(v, gran)       (0 == ((v) & ((gran) - 1)))
 #endif
+
+typedef int mem_state_t;
 
 static inline char* mem_state_to_string(mem_state_t state)
 {
@@ -488,7 +486,7 @@ int change_numa_node_state(uint32_t node_id, uint64_t region_gpu_size,
 }
 
 static
-int offline_blacklisted_pages(nv_blacklist_addresses_t *blacklist_addresses)
+int offline_blacklisted_pages(nv_offline_addresses_t *blacklist_addresses)
 {
     int index;
     int status = 0;
@@ -886,7 +884,7 @@ NvPdStatus nvNumaOnlineMemory(NvNumaDevice *numa_info)
     }
 
 set_driver_status:
-    status = offline_blacklisted_pages(&numa_info_params.blacklist_addresses);
+    status = offline_blacklisted_pages(&numa_info_params.offline_addresses);
     if (status < 0) {
         syslog_device(device_pci_info,
                       LOG_ERR,

@@ -26,49 +26,6 @@
 #include "nvpd_rpc.h"
 #include "nvidia-syslog-utils.h"
 
-#define NV_IOCTL_NUMA_INFO_MAX_BLACKLIST_ADDRESSES 64
-
-typedef enum
-{
-    NV_IOCTL_NUMA_STATUS_DISABLED             = 0,
-    NV_IOCTL_NUMA_STATUS_OFFLINE              = 1,
-    NV_IOCTL_NUMA_STATUS_ONLINE_IN_PROGRESS   = 2,
-    NV_IOCTL_NUMA_STATUS_ONLINE               = 3,
-    NV_IOCTL_NUMA_STATUS_ONLINE_FAILED        = 4,
-    NV_IOCTL_NUMA_STATUS_OFFLINE_IN_PROGRESS  = 5,
-    NV_IOCTL_NUMA_STATUS_OFFLINE_FAILED       = 6
-} mem_state_t;
-
-/* system parameters that the kernel driver may use for configuration */
-typedef struct nv_ioctl_sys_params
-{
-    uint64_t memblock_size;
-} nv_ioctl_sys_params_t;
-
-/* list of device blacklisted addresses */
-typedef struct blacklist_addresses
-{
-    uint64_t  addresses[NV_IOCTL_NUMA_INFO_MAX_BLACKLIST_ADDRESSES];
-    uint32_t  numEntries;
-} nv_blacklist_addresses_t;
-
-/* per-device NUMA memory info as assigned by the system */
-typedef struct nv_ioctl_numa_info
-{
-    int nid;
-    int status;
-    uint64_t memblock_size;
-    uint64_t numa_mem_addr;
-    uint64_t numa_mem_size;
-    nv_blacklist_addresses_t blacklist_addresses;
-} nv_ioctl_numa_info_t;
-
-/* set the status of the device NUMA memory */
-typedef struct nv_ioctl_set_numa_status
-{
-    int status;
-} nv_ioctl_set_numa_status_t;
-
 /* per-device NUMA context */
 typedef struct
 {
