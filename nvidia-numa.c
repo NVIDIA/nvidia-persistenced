@@ -51,7 +51,8 @@
 #define MEMORY_PATH_FMT              "/sys/devices/system/memory"
 #define MEMORY_HARD_OFFLINE_PATH_FMT MEMORY_PATH_FMT "/hard_offline_page"
 #define MEMORY_PROBE_PATH_FMT        MEMORY_PATH_FMT "/probe"
-#define MEMBLK_DIR_PATH_FMT          MEMORY_PATH_FMT "/memory%d"
+#define MEMBLK_FILE_FMT              "memory%d"
+#define MEMBLK_DIR_PATH_FMT          MEMORY_PATH_FMT "/" MEMBLK_FILE_FMT
 #define MEMBLK_STATE_PATH_FMT        MEMBLK_DIR_PATH_FMT "/state"
 #define MEMBLK_VALID_ZONES_PATH_FMT  MEMBLK_DIR_PATH_FMT "/valid_zones"
 #define NID_PATH_FMT                 "/sys/devices/system/node/node%d"
@@ -328,102 +329,18 @@ inline int get_memblock_id_from_dirname(const char *dirname, uint32_t *block_id)
     return (sscanf(dirname, "memory%" PRIu32, block_id) == 1) ? 0 : -EINVAL;
 }
 
-/*
- * Looks through NUMA nodes, finding the upper and lower bounds, and returns
- * those. The assumption is that the nodes are physically contiguous, so that
- * the intervening nodes do not need to be explicitly returned.
- */
 static
-int gather_memblock_ids_for_node(uint32_t node_id, uint32_t *memblock_start_id,
-                                 uint32_t *memblock_end_id)
-{
-    DIR *dir_ptr;
-    int status = 0;
-    struct dirent *dir_entry;
-    char numa_file_path[BUF_SIZE];
-    uint32_t start_id = UINT32_MAX;
-    uint32_t end_id = 0;
-
-    sprintf(numa_file_path, NID_PATH_FMT, node_id);
-
-    dir_ptr = opendir(numa_file_path);
-    if (!dir_ptr) {
-        syslog(LOG_ERR, "NUMA: Failed to open directory %s: %s\n",
-               numa_file_path, strerror(errno));
-        return -errno;
-    }
-
-    /* Iterate through the node directory and get the memblock id */
-    while ((dir_entry = readdir(dir_ptr)) != NULL) {
-        uint32_t memblock_id = 0;
-
-        /* Skip entries that are not a memory node */
-        if (get_memblock_id_from_dirname(dir_entry->d_name, &memblock_id) < 0) {
-            continue;
-        }
-
-        if (memblock_id == 0) {
-            syslog(LOG_ERR,
-                   "NUMA: Failed to get memblock id while iterating through %s\n",
-                   numa_file_path);
-            goto cleanup;
-        }
-
-        SYSLOG_VERBOSE(LOG_DEBUG, "NUMA: Found memblock entry %"PRIu32"\n",
-                       memblock_id);
-
-        /* Record the smallest and largest assigned memblock IDs */
-        start_id = (start_id < memblock_id) ? start_id : memblock_id;
-        end_id = (end_id > memblock_id) ? end_id : memblock_id;
-    }
-
-    /*
-     * If the wrong directory was specified, readdir can return success,
-     * even though it never iterated any files in the directory. Make that case
-     * also an error, by verifying that start_id has been set.
-     */
-    if (start_id == UINT32_MAX) {
-        syslog(LOG_ERR, "NUMA: Failed to find any files in %s", numa_file_path);
-        status = -ENOENT;
-        goto cleanup;
-    }
-
-    *memblock_start_id = start_id;
-    *memblock_end_id = end_id;
-
-    SYSLOG_VERBOSE(LOG_DEBUG,
-                   "NUMA: Found memblock start id: %"PRIu32
-                   " and end id: %"PRIu32"\n",
-                   *memblock_start_id, *memblock_end_id);
-
-cleanup:
-    closedir(dir_ptr);
-    return status;
-}
-
-static
-int change_numa_node_state(uint32_t node_id, uint64_t region_gpu_size,
-                           uint64_t memblock_size, mem_state_t new_state)
+int change_numa_node_state(uint32_t node_id,
+                           uint64_t base_addr, 
+                           uint64_t region_gpu_size, 
+                           uint64_t memblock_size, 
+                           mem_state_t new_state)
 {
     uint32_t memblock_id;
     int status = 0, err_status = 0;
     uint64_t blocks_changed = 0;
-    uint32_t memblock_start_id = 0;
-    uint32_t memblock_end_id = 0;
-
-    status = gather_memblock_ids_for_node(node_id, &memblock_start_id,
-                                          &memblock_end_id);
-    if (status < 0) {
-        syslog(LOG_ERR, "NUMA: Failed to get all memblock ID's for node%d\n",
-               node_id);
-        return status;
-    }
-
-    if (memblock_start_id > memblock_end_id) {
-        syslog(LOG_ERR, "NUMA: Invalid memblock IDs were found for node%d\n",
-               node_id);
-        return -EINVAL;
-    }
+    uint32_t memblock_start_id = base_addr / memblock_size;
+    uint32_t memblock_end_id = (base_addr + region_gpu_size) / memblock_size - 1;
 
     SYSLOG_VERBOSE(LOG_DEBUG,
                    "NUMA: memblock ID range: %"PRIu32"-%"PRIu32
@@ -533,6 +450,14 @@ int probe_node_memory(uint64_t probe_base_addr, uint64_t region_gpu_size,
         return -EFAULT;
     }
 
+    if (access(MEMORY_PROBE_PATH_FMT, F_OK) != 0 && errno == ENOENT)
+        /*
+         * It is not an error when the 'probe' file is not found, since this
+         * situation is normal for systems where the driver handles probe of
+         * the NUMA memory.
+         */
+        goto done;
+
     for (start_addr = probe_base_addr;
          start_addr + memblock_size <= numa_end_addr;
          start_addr += memblock_size) {
@@ -619,6 +544,7 @@ int offline_memory(int fd)
     }
 
     status = change_numa_node_state(numa_info_params.nid,
+                                    numa_info_params.numa_mem_addr,
                                     numa_info_params.numa_mem_size,
                                     numa_info_params.memblock_size,
                                     NV_IOCTL_NUMA_STATUS_OFFLINE);
@@ -650,7 +576,7 @@ driver_fail:
 }
 
 #define MEMORY_AUTO_ONLINE_WARNING_FMT                                      \
-    "NUMA: %s state is online and the default zone is not movable (%s).\n"  \
+    "NUMA: " MEMBLK_FILE_FMT " state is online and the default zone is not movable (%s).\n"  \
     "This likely means that some non-NVIDIA software has auto-onlined\n"    \
     "the device memory before nvidia-persistenced could. Please check\n"    \
     "if the CONFIG_MEMORY_HOTPLUG_DEFAULT_ONLINE kernel config option\n"    \
@@ -658,16 +584,22 @@ driver_fail:
     "/lib/udev/rules.d/."
 
 static
-int check_memory_auto_online(uint32_t node_id, NvCfgBool *auto_online_success)
+int check_memory_auto_online(uint32_t node_id, 
+                             uint64_t base_addr, 
+                             uint64_t region_gpu_size, 
+                             uint64_t memblock_size,
+                             NvCfgBool *auto_online_success)
 {
     DIR     *dir_ptr;
     int     status = 0;
-    struct  dirent *dir_entry;
     char    read_buf[BUF_SIZE];
     char    numa_file_path[BUF_SIZE];
     char    memory_file_path[BUF_SIZE];
     int     num_memory_node_in_dir = 0;
     int     num_memory_online_movable = 0;
+    uint32_t block_id;
+    uint32_t memblock_start_id = base_addr / memblock_size;
+    uint32_t memblock_end_id = (base_addr + region_gpu_size) / memblock_size - 1;
 
     *auto_online_success = NVCFG_FALSE;
 
@@ -680,14 +612,8 @@ int check_memory_auto_online(uint32_t node_id, NvCfgBool *auto_online_success)
         return -errno;
     }
 
-    /* Iterate through the node directory */
-    while ((dir_entry = readdir(dir_ptr)) != NULL) {
-        uint32_t block_id;
-
-        /* Skip entries that are not a memory node */
-        if (get_memblock_id_from_dirname(dir_entry->d_name, &block_id) < 0) {
-            continue;
-        }
+    /* Iterate through the blocks */
+    for (block_id = memblock_start_id; block_id <= memblock_end_id; block_id++) {
 
         num_memory_node_in_dir++;
 
@@ -697,7 +623,7 @@ int check_memory_auto_online(uint32_t node_id, NvCfgBool *auto_online_success)
                                        read_buf, sizeof(read_buf));
         if (status < 0) {
             syslog(LOG_ERR,
-                   "NUMA: Failed to read %s state\n", dir_entry->d_name);
+                   "NUMA: Failed to read " MEMBLK_FILE_FMT " state\n", block_id);
             goto cleanup;
         }
 
@@ -713,15 +639,15 @@ int check_memory_auto_online(uint32_t node_id, NvCfgBool *auto_online_success)
                                            read_buf, sizeof(read_buf));
             if (status < 0) {
                 syslog(LOG_ERR,
-                       "NUMA: Failed to read %s valid_zones\n",
-                       dir_entry->d_name);
+                       "NUMA: Failed to read " MEMBLK_FILE_FMT " valid_zones\n",
+                       block_id);
                 goto cleanup;
             }
 
             /* If memory was auto-onlined, check if valid_zones is Movable */
             if (strstr(read_buf, VALID_MOVABLE_STATE) != read_buf) {
                 syslog(LOG_NOTICE, MEMORY_AUTO_ONLINE_WARNING_FMT,
-                       dir_entry->d_name, read_buf);
+                       block_id, read_buf);
                 status = -ENOTSUP;
                 break;
             } else {
@@ -852,6 +778,9 @@ NvPdStatus nvNumaOnlineMemory(NvNumaDevice *numa_info)
 
     /* Check if probed memory has been auto-onlined */
     status = check_memory_auto_online(numa_info_params.nid,
+                                      numa_info_params.numa_mem_addr,
+                                      numa_info_params.numa_mem_size,
+                                      numa_info_params.memblock_size,
                                       &auto_online_success);
     if (status < 0) {
         if (status != -ENOTSUP) {
@@ -871,6 +800,7 @@ NvPdStatus nvNumaOnlineMemory(NvNumaDevice *numa_info)
     }
 
     status = change_numa_node_state(numa_info_params.nid,
+                                    numa_info_params.numa_mem_addr,
                                     numa_info_params.numa_mem_size,
                                     numa_info_params.memblock_size,
                                     NV_IOCTL_NUMA_STATUS_ONLINE);
