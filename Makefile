@@ -77,8 +77,11 @@ include dist-files.mk
 include $(COMMON_UTILS_DIR)/src.mk
 SRC += $(addprefix $(COMMON_UTILS_DIR)/,$(COMMON_UTILS_SRC))
 
-# rpcgen generates code that emits unused variable warnings
+# rpcgen generates code that emits unused variable warnings and suspicious
+# function type casts
 $(call BUILD_OBJECT_LIST,$(RPC_SRC)): CFLAGS += -Wno-unused-variable
+suppress_cast_func_type_warning := $(call TEST_CC_ARG,-Wno-cast-function-type)
+$(call BUILD_OBJECT_LIST,$(RPC_SRC)): CFLAGS += $(suppress_cast_func_type_warning)
 
 OBJS = $(call BUILD_OBJECT_LIST,$(SRC))
 
