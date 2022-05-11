@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2020 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2020-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: MIT
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -28,15 +28,16 @@
 /* NOTE: using an ioctl() number > 55 will overflow! */
 #define NV_IOCTL_MAGIC      'F'
 #define NV_IOCTL_BASE       200
-#define NV_ESC_CARD_INFO         (NV_IOCTL_BASE + 0)
-#define NV_ESC_REGISTER_FD       (NV_IOCTL_BASE + 1)
-#define NV_ESC_ALLOC_OS_EVENT    (NV_IOCTL_BASE + 6)
-#define NV_ESC_FREE_OS_EVENT     (NV_IOCTL_BASE + 7)
-#define NV_ESC_STATUS_CODE       (NV_IOCTL_BASE + 9)
-#define NV_ESC_CHECK_VERSION_STR (NV_IOCTL_BASE + 10)
-#define NV_ESC_IOCTL_XFER_CMD    (NV_IOCTL_BASE + 11)
-#define NV_ESC_ATTACH_GPUS_TO_FD (NV_IOCTL_BASE + 12)
-#define NV_ESC_QUERY_DEVICE_INTR (NV_IOCTL_BASE + 13)
-#define NV_ESC_SYS_PARAMS        (NV_IOCTL_BASE + 14)
+#define NV_ESC_CARD_INFO             (NV_IOCTL_BASE + 0)
+#define NV_ESC_REGISTER_FD           (NV_IOCTL_BASE + 1)
+#define NV_ESC_ALLOC_OS_EVENT        (NV_IOCTL_BASE + 6)
+#define NV_ESC_FREE_OS_EVENT         (NV_IOCTL_BASE + 7)
+#define NV_ESC_STATUS_CODE           (NV_IOCTL_BASE + 9)
+#define NV_ESC_CHECK_VERSION_STR     (NV_IOCTL_BASE + 10)
+#define NV_ESC_IOCTL_XFER_CMD        (NV_IOCTL_BASE + 11)
+#define NV_ESC_ATTACH_GPUS_TO_FD     (NV_IOCTL_BASE + 12)
+#define NV_ESC_QUERY_DEVICE_INTR     (NV_IOCTL_BASE + 13)
+#define NV_ESC_SYS_PARAMS            (NV_IOCTL_BASE + 14)
+#define NV_ESC_EXPORT_TO_DMABUF_FD   (NV_IOCTL_BASE + 17)
 
 #endif
