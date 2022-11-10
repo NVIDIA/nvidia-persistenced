@@ -119,16 +119,19 @@ endif
 ##############################################################################
 # build rules
 ##############################################################################
-.PHONY: all install NVIDIA_PERSISTENCED_install MANPAGE_install clean clobber
 
+.PHONY: all
 all: $(NVIDIA_PERSISTENCED) $(MANPAGE)
 
+.PHONY: install
 install: NVIDIA_PERSISTENCED_install MANPAGE_install
 
+.PHONY: NVIDIA_PERSISTENCED_install
 NVIDIA_PERSISTENCED_install: $(NVIDIA_PERSISTENCED)
 	$(MKDIR) $(BINDIR)
 	$(INSTALL) $(INSTALL_BIN_ARGS) $< $(BINDIR)/$(notdir $<)
 
+.PHONY: MANPAGE_install
 MANPAGE_install: $(MANPAGE)
 	$(MKDIR) $(MANDIR)
 	$(INSTALL) $(INSTALL_BIN_ARGS) $< $(MANDIR)/$(notdir $<)
@@ -141,6 +144,7 @@ $(NVIDIA_PERSISTENCED).unstripped: $(OBJS)
 # define the rule to build each object file
 $(foreach src, $(SRC), $(eval $(call DEFINE_OBJECT_RULE,TARGET,$(src))))
 
+.PHONY: clean clobber
 clean clobber:
 	$(RM) -rf $(NVIDIA_PERSISTENCED) $(MANPAGE) *~ \
 		$(OUTPUTDIR)/*.o $(OUTPUTDIR)/*.d \
@@ -152,6 +156,7 @@ clean clobber:
 
 AUTO_TEXT = ".\\\" WARNING: THIS FILE IS AUTO_GENERATED!  Edit $< instead."
 
+.PHONY: doc
 doc: $(MANPAGE)
 
 GEN_MANPAGE_OPTS_SRC = gen-manpage-opts.c
