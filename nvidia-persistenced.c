@@ -518,6 +518,8 @@ static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path)
 {
     char *lib_path;
     int status = 0;
+    NvCfgBool success;
+    NvCfgPciDevice *nv_cfg_devices;
 
     if (nvidia_cfg_path != NULL) {
         lib_path = nvstrcat(nvidia_cfg_path, "/", NVIDIA_CFG_LIB, NULL);
@@ -547,6 +549,16 @@ static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path)
 
     if (status != 0) {
         /* Missing symbols are already called out by load_nvidia_cfg_sym(). */
+        return NVPD_ERR_DRIVER;
+    }
+
+    /* Make a call to get_pci_devices for the side-effect of creating the device files */
+    success = nv_cfg_api.get_pci_devices(&num_devices, &nv_cfg_devices);
+    if (!success) {
+        syslog(LOG_ERR, "Failed to query NVIDIA devices. Please ensure that "
+                        "the NVIDIA device files (/dev/nvidia*) exist, and "
+                        "that user %u has read and write permissions for "
+                        "those files.", getuid());
         return NVPD_ERR_DRIVER;
     }
 
@@ -899,6 +911,11 @@ int main(int argc, char* argv[])
 
     /* Only the daemon process reaches this point */
     status = setup_nvidia_cfg_api(options.nvidia_cfg_path);
+    if (status != NVPD_SUCCESS) {
+        goto shutdown;
+    }
+
+    status = setup_numa_auto_online();
     if (status != NVPD_SUCCESS) {
         goto shutdown;
     }

@@ -31,10 +31,13 @@ typedef struct
 {
     int fd;
     NvCfgPciDevice *pci_info;
+    uint8_t use_auto_online;
 } NvNumaDevice;
 
 NvPdStatus nvNumaOnlineMemory(NvNumaDevice *numa_info);
 
 NvPdStatus nvNumaOfflineMemory(NvNumaDevice *numa_info);
+
+NvPdStatus setup_numa_auto_online(void);
 
 #endif

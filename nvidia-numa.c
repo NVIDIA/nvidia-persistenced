@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, NVIDIA CORPORATION.
+ * Copyright (c) 2018-2023, NVIDIA CORPORATION.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -51,6 +51,7 @@
 #define MEMORY_PATH_FMT              "/sys/devices/system/memory"
 #define MEMORY_HARD_OFFLINE_PATH_FMT MEMORY_PATH_FMT "/hard_offline_page"
 #define MEMORY_PROBE_PATH_FMT        MEMORY_PATH_FMT "/probe"
+#define AUTO_ONLINE_PATH             MEMORY_PATH_FMT "/auto_online_blocks"
 #define MEMBLK_FILE_FMT              "memory%d"
 #define MEMBLK_DIR_PATH_FMT          MEMORY_PATH_FMT "/" MEMBLK_FILE_FMT
 #define MEMBLK_STATE_PATH_FMT        MEMBLK_DIR_PATH_FMT "/state"
@@ -58,6 +59,9 @@
 #define NID_PATH_FMT                 "/sys/devices/system/node/node%d"
 #define STATE_ONLINE                 "online"
 #define VALID_MOVABLE_STATE          "Movable"
+
+#define SYSFS_NVIDIA_DIR             "/sys/bus/pci/drivers/nvidia/"
+#define SYSFS_ID_PATH                SYSFS_NVIDIA_DIR "%s/%s"
 
 #ifndef NV_IS_ALIGNED
 #define NV_IS_ALIGNED(v, gran)       (0 == ((v) & ((gran) - 1)))
@@ -708,6 +712,10 @@ NvPdStatus nvNumaOnlineMemory(NvNumaDevice *numa_info)
         goto driver_fail;
     }
 
+    /* handle case where auto online/offline should be used for NUMA memory */
+    if (numa_info_params.use_auto_online)
+        goto done;
+
     /* Check if numa status from RM is valid */
     switch (numa_info_params.status)
     {
@@ -834,6 +842,7 @@ set_driver_status:
     syslog(LOG_NOTICE, "NUMA: Memory onlining completed!\n");
 done:
     numa_info->fd = fd;
+    numa_info->use_auto_online = numa_info_params.use_auto_online;
     return NVPD_SUCCESS;
 
 online_failed:
@@ -864,6 +873,10 @@ NvPdStatus nvNumaOfflineMemory(NvNumaDevice *numa_info)
         return NVPD_ERR_NUMA_FAILURE;
     }
 
+    /* handle case where auto online/offline should be used for NUMA memory */
+    if (numa_info->use_auto_online)
+        goto done;
+
     status = offline_memory(fd);
     if (status < 0) {
         syslog_device(device_pci_info,
@@ -873,7 +886,70 @@ NvPdStatus nvNumaOfflineMemory(NvNumaDevice *numa_info)
         return NVPD_ERR_NUMA_FAILURE;
     }
 
+done:
     close(fd);
     numa_info->fd = -1;
+    numa_info->use_auto_online = 0;
+    return NVPD_SUCCESS;
+}
+
+static int
+read_int_from_file(char *devicename, char *id_file)
+{
+    FILE *fp;
+    char filename[PATH_MAX];
+    unsigned int id;
+
+    sprintf(filename, SYSFS_ID_PATH, devicename, id_file);
+
+    fp = fopen(filename, "r");
+    if (fp == NULL)
+        return -1;
+    if (fscanf(fp, "%x", &id) < 0)
+        return -1;
+    fclose(fp);
+
+    return id;
+}
+/*
+ * Handle setup for systems with GPUs that require Auto-online of NUMA memory
+ */
+NvPdStatus setup_numa_auto_online(void)
+{
+    DIR *nvidia;
+    struct dirent *device;
+    int vendor_id, device_id;
+    int status;
+
+    nvidia = opendir(SYSFS_NVIDIA_DIR);
+    if (nvidia == NULL) {
+        printf("Failed to open %s\n", SYSFS_NVIDIA_DIR);
+        syslog(LOG_ERR, "NUMA: Failed to open %s\n", SYSFS_NVIDIA_DIR);
+        return NVPD_ERR_DEVICE_NOT_FOUND;
+    }
+
+    // Scans devices owned by the NVIDIA driver...
+    while ((device = readdir(nvidia)) != NULL) {
+        if (device->d_type != DT_LNK)
+            continue;
+
+        vendor_id = read_int_from_file(device->d_name, "vendor");
+        if (vendor_id != 0x10de)
+            continue;
+
+        device_id = read_int_from_file(device->d_name, "device");
+
+        // Check for GH180, which requires auto-online
+        if (device_id >= 0x2340 && device_id <= 0x237f) {
+            syslog(LOG_INFO, "NUMA: Enabling NUMA memory Auto-Online due to GPU requirement\n");
+            status = write_string_to_file(AUTO_ONLINE_PATH, BRING_ONLINE_CMD, strlen(BRING_ONLINE_CMD));
+            if (status < 0) {
+                syslog(LOG_ERR, "NUMA: Failed to enable NUMA memory Auto-Online\n");
+                return NVPD_ERR_NUMA_FAILURE;
+            }
+            return NVPD_SUCCESS;
+        }
+    }
+
     return NVPD_SUCCESS;
 }
