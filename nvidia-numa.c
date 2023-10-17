@@ -177,6 +177,9 @@ int get_gpu_numa_info(int fd, nv_ioctl_numa_info_t *numa_info)
     uint32_t request;
 
     memset(numa_info, 0, sizeof(*numa_info));
+    numa_info->offline_addresses.numEntries =
+        ARRAY_LEN(numa_info->offline_addresses.addresses);
+
     request = _IOWR(NV_IOCTL_MAGIC, NV_ESC_NUMA_INFO,
                     char[sizeof(*numa_info)]);
 

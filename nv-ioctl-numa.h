@@ -25,14 +25,12 @@
 #ifndef NV_IOCTL_NUMA_H
 #define NV_IOCTL_NUMA_H
 
-#if defined(NV_LINUX)
-
 #include <nv-ioctl-numbers.h>
 
-#if defined(NV_KERNEL_INTERFACE_LAYER)
-
+#if defined(NV_KERNEL_INTERFACE_LAYER) && defined(NV_LINUX)
 #include <linux/types.h>
-
+#elif defined (NV_KERNEL_INTERFACE_LAYER) && defined(NV_BSD)
+#include <sys/stdint.h>
 #else
 
 #include <stdint.h>
@@ -79,7 +77,5 @@ typedef struct nv_ioctl_set_numa_status
 #define NV_IOCTL_NUMA_STATUS_ONLINE_FAILED          4
 #define NV_IOCTL_NUMA_STATUS_OFFLINE_IN_PROGRESS    5
 #define NV_IOCTL_NUMA_STATUS_OFFLINE_FAILED         6
-
-#endif
 
 #endif
