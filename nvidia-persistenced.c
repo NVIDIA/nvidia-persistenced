@@ -54,6 +54,7 @@ typedef struct
     NvCfgDeviceHandle nv_cfg_handle;
     NvCfgPciDevice pci_info;
     NvPersistenceMode mode;
+    NvUVMPersistenceMode uvm_pm_mode;
     NvNumaStatus numa_status;
     NvNumaDevice numa_info;
 } NvPdDevice;
@@ -68,11 +69,14 @@ static int socket_fd = -1;
 static NvPdDevice *devices = NULL;
 static int num_devices = 0;
 static int remove_dir = 0;
+static NvUVMPersistenceMode set_uvm_pm = NV_UVM_PERSISTENCE_MODE_DISABLED;
 
 static struct {
     NvCfgBool (*get_pci_devices)(int *, NvCfgPciDevice **);
     NvCfgBool (*open_pci_device)(int, int, int, int, NvCfgDeviceHandle *);
     NvCfgBool (*close_device)(NvCfgDeviceHandle);
+    unsigned int (*nvCfgEnableUVMPersistence)(NvCfgDeviceHandle);
+    unsigned int (*nvCfgDisableUVMPersistence)(NvCfgDeviceHandle);
 } nv_cfg_api;
 
 /*
@@ -273,6 +277,7 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
 {
     NvPdStatus status = NVPD_SUCCESS;
     NvCfgBool success;
+    unsigned int ret;
 
     /* If the device is already in the mode specified, just abort */
     if (mode == device->mode) {
@@ -285,6 +290,18 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
 
     case NV_PERSISTENCE_MODE_DISABLED:
 
+        /* If UVM persistence is enabled at this point, we must disable it */
+        if (device->uvm_pm_mode == NV_UVM_PERSISTENCE_MODE_ENABLED) {
+            ret = nv_cfg_api.nvCfgDisableUVMPersistence(device->nv_cfg_handle);
+            if (ret != 0) {
+                syslog_device(&device->pci_info, LOG_WARNING,
+                        "Failed to disable UVM Persistence mode: 0x%x", ret);
+            } else {
+                syslog_device(&device->pci_info, LOG_INFO,
+                        "Disabled UVM Persistence mode.");
+                device->uvm_pm_mode = NV_PERSISTENCE_MODE_DISABLED;
+            }
+        }
         /* If the new mode is disabled, we must close the device. */
         success = nv_cfg_api.close_device(device->nv_cfg_handle);
         if (!success) {
@@ -307,6 +324,19 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
         if (!success) {
             syslog_device(&device->pci_info, LOG_ERR, "failed to open.");
             status = NVPD_ERR_DRIVER;
+        }
+
+        /* If UVM-PM is enabled by user, we must register with UVM */
+        if (set_uvm_pm == NV_UVM_PERSISTENCE_MODE_ENABLED) {
+            ret = nv_cfg_api.nvCfgEnableUVMPersistence(device->nv_cfg_handle);
+            if (ret != 0) {
+                syslog_device(&device->pci_info, LOG_WARNING,
+                        "Failed to enable UVM Persistence mode: 0x%x", ret);
+            } else {
+                syslog_device(&device->pci_info, LOG_INFO,
+                        "Enabled UVM Persistence mode.");
+                device->uvm_pm_mode = NV_UVM_PERSISTENCE_MODE_ENABLED;
+            }
         }
 
         break;
@@ -546,7 +576,14 @@ static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path)
                                   "nvCfgOpenPciDevice");
     status |= load_nvidia_cfg_sym((void **)&nv_cfg_api.close_device,
                                   "nvCfgCloseDevice");
-
+    if (set_uvm_pm == NV_UVM_PERSISTENCE_MODE_ENABLED) {
+        status |= load_nvidia_cfg_sym(
+                (void **)&nv_cfg_api.nvCfgEnableUVMPersistence,
+                                    "nvCfgEnableUVMPersistence");
+        status |= load_nvidia_cfg_sym(
+                (void **)&nv_cfg_api.nvCfgDisableUVMPersistence,
+                                    "nvCfgDisableUVMPersistence");
+    }
     if (status != 0) {
         /* Missing symbols are already called out by load_nvidia_cfg_sym(). */
         return NVPD_ERR_DRIVER;
@@ -601,6 +638,7 @@ static NvPdStatus setup_devices(NvPersistenceMode default_mode)
     for (i = 0; i < num_devices; i++) {
         devices[i].nv_cfg_handle = NULL;
         devices[i].pci_info = nv_cfg_devices[i];
+        devices[i].uvm_pm_mode = NV_UVM_PERSISTENCE_MODE_DISABLED;
 
         /* nvidia-cfg doesn't fill in the PCI function field, assume 0 */
         devices[i].pci_info.function = 0;
@@ -906,6 +944,9 @@ int main(int argc, char* argv[])
 
     parse_options(argc, argv, &options);
     verbose = options.verbose;
+    if (options.uvm_persistence_mode == NV_UVM_PERSISTENCE_MODE_ENABLED) {
+        set_uvm_pm = NV_UVM_PERSISTENCE_MODE_ENABLED;
+    }
 
     pipe_write_fd = daemonize(options.uid, options.gid);
 

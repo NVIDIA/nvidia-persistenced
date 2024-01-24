@@ -453,4 +453,22 @@ NvCfgBool nvCfgFlashGSyncDevice(NvCfgGSyncHandle handle, int format,
  */
 NvCfgBool nvCfgDumpDisplayPortAuxLog(NvCfgDeviceHandle handle);
 
+/*
+ * nvCfgEnableUvmPersistence() - Enable UVM Persistence mode.
+ * On success, zero will be returned. On failure, non zero
+ * value will be returned.
+ * This API is for internal use only and will be removed
+ * in a future release.
+ */
+unsigned int nvCfgEnableUVMPersistence(NvCfgDeviceHandle handle);
+
+/*
+ * nvCfgDisableUVMPersistence() - Disable UVM Persistence mode.
+ * On success, zero will be returned. On failure, non-zero
+ * value will be returned.
+ * This API is for internal use only and will be removed
+ * in a future release.
+ */
+unsigned int nvCfgDisableUVMPersistence(NvCfgDeviceHandle handle);
+
 #endif /* __NVIDIA_CFG__ */

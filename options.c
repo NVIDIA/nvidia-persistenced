@@ -98,6 +98,7 @@ static void print_help(void)
 static void setup_option_defaults(NvPdOptions *options)
 {
     options->persistence_mode = NV_PERSISTENCE_MODE_ENABLED;
+    options->uvm_persistence_mode = NV_UVM_PERSISTENCE_MODE_DISABLED;
     options->nvidia_cfg_path = NULL;
     options->verbose = 0;
     options->uid = getuid();
@@ -171,6 +172,13 @@ void parse_options(int argc, char *argv[], NvPdOptions *options)
                     options->persistence_mode = NV_PERSISTENCE_MODE_ENABLED;
                 } else {
                     options->persistence_mode = NV_PERSISTENCE_MODE_DISABLED;
+                }
+                break;
+            case UVM_PERSISTENCE_MODE_OPTION:
+                if (boolval) {
+                    options->uvm_persistence_mode = NV_UVM_PERSISTENCE_MODE_ENABLED;
+                } else {
+                    options->uvm_persistence_mode = NV_UVM_PERSISTENCE_MODE_DISABLED;
                 }
                 break;
             case NVIDIA_CFG_PATH_OPTION:

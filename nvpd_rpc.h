@@ -44,6 +44,12 @@ enum NvPersistenceMode {
 };
 typedef enum NvPersistenceMode NvPersistenceMode;
 
+enum NvUVMPersistenceMode {
+	NV_UVM_PERSISTENCE_MODE_DISABLED = 0,
+	NV_UVM_PERSISTENCE_MODE_ENABLED = 1,
+};
+typedef enum NvUVMPersistenceMode NvUVMPersistenceMode;
+
 struct SetPersistenceModeArgs {
 	NvPciDevice device;
 	NvPersistenceMode mode;
@@ -123,6 +129,7 @@ extern int nvpd_prog_2_freeresult ();
 extern  bool_t xdr_NvPdStatus (XDR *, NvPdStatus*);
 extern  bool_t xdr_NvPciDevice (XDR *, NvPciDevice*);
 extern  bool_t xdr_NvPersistenceMode (XDR *, NvPersistenceMode*);
+extern  bool_t xdr_NvUVMPersistenceMode (XDR *, NvUVMPersistenceMode*);
 extern  bool_t xdr_SetPersistenceModeArgs (XDR *, SetPersistenceModeArgs*);
 extern  bool_t xdr_GetPersistenceModeArgs (XDR *, GetPersistenceModeArgs*);
 extern  bool_t xdr_GetPersistenceModeRes (XDR *, GetPersistenceModeRes*);
@@ -133,6 +140,7 @@ extern  bool_t xdr_SetNumaStatusArgs (XDR *, SetNumaStatusArgs*);
 extern bool_t xdr_NvPdStatus ();
 extern bool_t xdr_NvPciDevice ();
 extern bool_t xdr_NvPersistenceMode ();
+extern bool_t xdr_NvUVMPersistenceMode ();
 extern bool_t xdr_SetPersistenceModeArgs ();
 extern bool_t xdr_GetPersistenceModeArgs ();
 extern bool_t xdr_GetPersistenceModeRes ();

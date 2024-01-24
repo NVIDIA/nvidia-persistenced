@@ -105,8 +105,6 @@ ifneq ($(TARGET_OS),FreeBSD)
   LIBS += -ldl
 endif
 
-PKG_CONFIG ?= pkg-config
-
 USE_TIRPC ?= $(shell $(PKG_CONFIG) --exists libtirpc && echo 1)
 
 ifeq ($(USE_TIRPC),1)

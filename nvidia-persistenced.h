@@ -35,6 +35,7 @@
 /* Daemon Options */
 typedef struct {
     NvPersistenceMode persistence_mode;
+    NvUVMPersistenceMode uvm_persistence_mode;
     char *nvidia_cfg_path;
     int verbose;
     uid_t uid;

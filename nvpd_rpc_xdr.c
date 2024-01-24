@@ -36,6 +36,14 @@ xdr_NvPersistenceMode (XDR *xdrs, NvPersistenceMode *objp)
 }
 
 bool_t
+xdr_NvUVMPersistenceMode (XDR *xdrs, NvUVMPersistenceMode *objp)
+{
+	 if (!xdr_enum (xdrs, (enum_t *) objp))
+		 return FALSE;
+	return TRUE;
+}
+
+bool_t
 xdr_SetPersistenceModeArgs (XDR *xdrs, SetPersistenceModeArgs *objp)
 {
 	 if (!xdr_NvPciDevice (xdrs, &objp->device))

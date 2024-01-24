@@ -30,6 +30,7 @@
 enum {
     PERSISTENCE_MODE_OPTION = 1024,
     NVIDIA_CFG_PATH_OPTION,
+    UVM_PERSISTENCE_MODE_OPTION,
 };
 
 static const NVGetoptOption __options[] = {
@@ -90,6 +91,15 @@ static const NVGetoptOption __options[] = {
       "By default, nvidia-persistenced starts with persistence mode enabled "
       "for all devices. Use '--no-persistence-mode' to force persistence mode "
       "off for all devices on startup." },
+
+    { "uvm-persistence-mode",
+      UVM_PERSISTENCE_MODE_OPTION,
+      NVGETOPT_IS_BOOLEAN | NVGETOPT_HELP_ALWAYS,
+      NULL,
+      "UVM persistence mode is only supported on the single GPU confidential "
+      "computing configuration. By default, nvidia-persistenced starts with UVM "
+      "persistence mode disabled for all devices. Use '--uvm-persistence-mode' "
+      "to force UVM persistence mode on for supported devices on startup." },
 
     { "nvidia-cfg-path",
       NVIDIA_CFG_PATH_OPTION,
