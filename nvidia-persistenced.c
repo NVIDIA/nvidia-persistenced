@@ -299,7 +299,7 @@ static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode)
             } else {
                 syslog_device(&device->pci_info, LOG_INFO,
                         "Disabled UVM Persistence mode.");
-                device->uvm_pm_mode = NV_PERSISTENCE_MODE_DISABLED;
+                device->uvm_pm_mode = NV_UVM_PERSISTENCE_MODE_DISABLED;
             }
         }
         /* If the new mode is disabled, we must close the device. */

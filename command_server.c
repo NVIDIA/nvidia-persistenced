@@ -25,12 +25,32 @@
  * command_server.c
  */
 
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <sys/socket.h>
 
 #include "nvidia-persistenced.h"
 #include "nvpd_rpc.h"
+
+static NvPdStatus _nvpdIsClientRoot(struct svc_req *req)
+{
+    struct ucred ucred = { -1, -1, -1 };
+    socklen_t ucred_len = sizeof(struct ucred);
+
+    if (getsockopt(req->rq_xprt->xp_sock,
+                   SOL_SOCKET, SO_PEERCRED,
+                   &ucred, &ucred_len) < 0) {
+        return NVPD_ERR_UNKNOWN;
+    }
+
+    if (ucred.uid != 0) {
+        return NVPD_ERR_PERMISSIONS;
+    }
+
+    return NVPD_SUCCESS;
+}
 
 /*!
  * nvpdsetpersistencemode_1_svc() - This service is an RPC function
@@ -40,6 +60,11 @@ NvPdStatus* nvpdsetpersistencemode_1_svc(SetPersistenceModeArgs *args,
                                          struct svc_req *req)
 {
     static NvPdStatus result;
+
+    result = _nvpdIsClientRoot(req);
+    if (result != NVPD_SUCCESS) {
+        return &result;
+    }
 
     result = nvPdSetDevicePersistenceMode(args->device.domain,
                                           args->device.bus,
@@ -80,6 +105,11 @@ NvPdStatus* nvpdsetpersistencemodeonly_2_svc(SetPersistenceModeArgs *args,
 {
     static NvPdStatus result;
 
+    result = _nvpdIsClientRoot(req);
+    if (result != NVPD_SUCCESS) {
+        return &result;
+    }
+
     result = nvPdSetDevicePersistenceModeOnly(args->device.domain,
                                               args->device.bus,
                                               args->device.slot,
@@ -97,6 +127,11 @@ NvPdStatus* nvpdsetnumastatus_2_svc(SetNumaStatusArgs *args,
                                     struct svc_req *req)
 {
     static NvPdStatus result;
+
+    result = _nvpdIsClientRoot(req);
+    if (result != NVPD_SUCCESS) {
+        return &result;
+    }
 
     result = nvPdSetDeviceNumaStatus(args->device.domain,
                                      args->device.bus,
