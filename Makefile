@@ -175,7 +175,7 @@ $(OPTIONS_1_INC): $(GEN_MANPAGE_OPTS)
 $(MANPAGE_not_gzipped): nvidia-persistenced.1.m4 $(OPTIONS_1_INC) $(VERSION_MK)
 	$(call quiet_cmd,M4) -D__HEADER__=$(AUTO_TEXT) -I $(OUTPUTDIR) \
 	  -D__VERSION__=$(NVIDIA_VERSION) \
-	  -D__DATE__="`$(DATE) +%F`" \
+	  -D__DATE__="`$(DATE) -u -r nvidia-persistenced.1.m4 +%F || $(DATE) +%F`" \
 	  -D__BUILD_OS__=$(TARGET_OS) \
 	  $< > $@
 
