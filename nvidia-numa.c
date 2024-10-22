@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2023, NVIDIA CORPORATION.
+ * Copyright (c) 2018-2024, NVIDIA CORPORATION.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -893,66 +893,5 @@ done:
     close(fd);
     numa_info->fd = -1;
     numa_info->use_auto_online = 0;
-    return NVPD_SUCCESS;
-}
-
-static int
-read_int_from_file(char *devicename, char *id_file)
-{
-    FILE *fp;
-    char filename[PATH_MAX];
-    unsigned int id;
-
-    sprintf(filename, SYSFS_ID_PATH, devicename, id_file);
-
-    fp = fopen(filename, "r");
-    if (fp == NULL)
-        return -1;
-    if (fscanf(fp, "%x", &id) < 0)
-        return -1;
-    fclose(fp);
-
-    return id;
-}
-/*
- * Handle setup for systems with GPUs that require Auto-online of NUMA memory
- */
-NvPdStatus setup_numa_auto_online(void)
-{
-    DIR *nvidia;
-    struct dirent *device;
-    int vendor_id, device_id;
-    int status;
-
-    nvidia = opendir(SYSFS_NVIDIA_DIR);
-    if (nvidia == NULL) {
-        printf("Failed to open %s\n", SYSFS_NVIDIA_DIR);
-        syslog(LOG_ERR, "NUMA: Failed to open %s\n", SYSFS_NVIDIA_DIR);
-        return NVPD_ERR_DEVICE_NOT_FOUND;
-    }
-
-    // Scans devices owned by the NVIDIA driver...
-    while ((device = readdir(nvidia)) != NULL) {
-        if (device->d_type != DT_LNK)
-            continue;
-
-        vendor_id = read_int_from_file(device->d_name, "vendor");
-        if (vendor_id != 0x10de)
-            continue;
-
-        device_id = read_int_from_file(device->d_name, "device");
-
-        // Check for GH180, which requires auto-online
-        if (device_id >= 0x2340 && device_id <= 0x237f) {
-            syslog(LOG_INFO, "NUMA: Enabling NUMA memory Auto-Online due to GPU requirement\n");
-            status = write_string_to_file(AUTO_ONLINE_PATH, BRING_ONLINE_CMD, strlen(BRING_ONLINE_CMD));
-            if (status < 0) {
-                syslog(LOG_ERR, "NUMA: Failed to enable NUMA memory Auto-Online\n");
-                return NVPD_ERR_NUMA_FAILURE;
-            }
-            return NVPD_SUCCESS;
-        }
-    }
-
     return NVPD_SUCCESS;
 }

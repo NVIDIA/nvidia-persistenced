@@ -1,5 +1,5 @@
 /*******************************************************************************
-    Copyright (c) 2015-2017 NVIDIA Corporation
+    Copyright (c) 2015-2024 NVIDIA Corporation
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to
@@ -37,7 +37,5 @@ typedef struct
 NvPdStatus nvNumaOnlineMemory(NvNumaDevice *numa_info);
 
 NvPdStatus nvNumaOfflineMemory(NvNumaDevice *numa_info);
-
-NvPdStatus setup_numa_auto_online(void);
 
 #endif
