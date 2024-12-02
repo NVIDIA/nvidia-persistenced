@@ -103,6 +103,7 @@ static void setup_option_defaults(NvPdOptions *options)
     options->verbose = 0;
     options->uid = getuid();
     options->gid = getgid();
+    options->foreground = 0;
 }
 
 /*
@@ -183,6 +184,9 @@ void parse_options(int argc, char *argv[], NvPdOptions *options)
                 break;
             case NVIDIA_CFG_PATH_OPTION:
                 options->nvidia_cfg_path = strval;
+                break;
+            case 'f':
+                options->foreground = 1;
                 break;
             default:
                 nv_error_msg("Invalid commandline, please run `%s --help` for "

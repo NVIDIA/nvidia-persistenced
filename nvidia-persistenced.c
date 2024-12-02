@@ -25,6 +25,7 @@
  * nvidia-persistenced.c
  */
 
+#include <signal.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -33,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -70,6 +72,7 @@ static NvPdDevice *devices = NULL;
 static int num_devices = 0;
 static int remove_dir = 0;
 static NvUVMPersistenceMode set_uvm_pm = NV_UVM_PERSISTENCE_MODE_DISABLED;
+static volatile sig_atomic_t signal_received = 0;
 
 static struct {
     NvCfgBool (*get_pci_devices)(int *, NvCfgPciDevice **);
@@ -82,7 +85,7 @@ static struct {
 /*
  * Local Functions
  */
-static int daemonize(uid_t uid, gid_t gid);
+static int init_daemon(uid_t uid, gid_t gid, int foreground);
 static int load_nvidia_cfg_sym(void **sym_ptr, const char *sym_name);
 static NvPdDevice *get_device(int domain, int bus, int slot);
 static NvPdStatus setup_nvidia_cfg_api(const char *nvidia_cfg_path);
@@ -91,6 +94,8 @@ static NvPdStatus setup_rpc(void);
 static NvPdStatus set_device_mode(NvPdDevice *device, NvPersistenceMode mode);
 static NvPdStatus set_device_numa_status(NvPdDevice *device,
                                          NvNumaStatus numa_status);
+static void set_unwanted_signals(sigset_t* signal_set);
+static NvPdStatus run();
 
 /*
  * nvPdSetDevicePersistenceMode() - This function implements the daemon
@@ -218,7 +223,7 @@ static NvPdDevice *get_device(int domain, int bus, int slot)
 
 /*
  * init_complete() - called by the child (daemon) process to signal to the
- * parent process, via the init pipe created during daemonize(), that
+ * parent process, via the init pipe created during init_daemon(), that
  * initialization has completed successfully.
  */
 static NvPdStatus init_complete(int pipe_write_fd)
@@ -249,10 +254,43 @@ static NvPdStatus wait_for_init_complete(int pipe_read_fd)
 {
     unsigned char success = 0;
     int bytes;
+    sigset_t signal_set;
+    fd_set readfds;
+    int dtbsz = getdtablesize();
+
+    sigemptyset(&signal_set);
+    set_unwanted_signals(&signal_set);
+
+    FD_ZERO(&readfds);
+    FD_SET(pipe_read_fd, &readfds);
+
+    /* We must wait for either a signal, or the read end of the pipe */
+    switch(pselect(dtbsz, &readfds, NULL, NULL, NULL, &signal_set)) {
+    case 0:
+        goto io_error;
+    case -1:
+        if (errno != EINTR) {
+            fprintf(stderr,
+                    "Failed to wait for signal or init pipe: %s\n",
+                    strerror(errno));
+            goto io_error;
+        }
+
+        close(pipe_read_fd);
+        if (signal_received) {
+            /* If we've been signalled, treat it as initialized */
+            return NVPD_SUCCESS;
+        }
+
+        /* We've been signalled, but not a signal we're expecting */
+        return NVPD_ERR_UNKNOWN;
+    default:
+        break;
+    }
 
     bytes = read(pipe_read_fd, &success, sizeof(success));
 
-    close(pipe_read_fd);    
+    close(pipe_read_fd);
 
     if (bytes < 0) {
         fprintf(stderr, "Failed to read init pipe: %s\n", strerror(errno));
@@ -266,6 +304,10 @@ static NvPdStatus wait_for_init_complete(int pipe_read_fd)
     }
 
     return NVPD_SUCCESS;
+
+io_error:
+    close(pipe_read_fd);
+    return NVPD_ERR_IO;
 }
 
 /*
@@ -717,32 +759,36 @@ static NvPdStatus setup_rpc()
  */
 static void signal_handler(int signal)
 {
-    SYSLOG_VERBOSE(LOG_DEBUG, "Received signal %d", signal);
-
     switch (signal) {
 
     case SIGINT:
     case SIGTERM:
-        shutdown_daemon(EXIT_SUCCESS);
+        signal_received = 1;
         break;
     default:
-        syslog(LOG_WARNING, "Unable to process signal %d",
-               signal);
         break;
 
     }
 }
 
+static void set_unwanted_signals(sigset_t* signal_set)
+{
+    sigaddset(signal_set, SIGCHLD);
+    sigaddset(signal_set, SIGTSTP);
+    sigaddset(signal_set, SIGTTOU);
+    sigaddset(signal_set, SIGTTIN);
+}
+
 /*
- * daemonize() - This function converts the current process into a daemon
+ * init_daemon() - This function converts the current process into a daemon
  * process.
  */
-static int daemonize(uid_t uid, gid_t gid)
+static int init_daemon(uid_t uid, gid_t gid, int foreground)
 {
     char pid_str[13];
     struct sigaction signal_action;
     sigset_t signal_set;
-    int init_pipe_fds[2];
+    int init_pipe_fds[2] = { -1, -1 };
     int pipe_read_fd, pipe_write_fd;
     int fd;
 
@@ -751,10 +797,9 @@ static int daemonize(uid_t uid, gid_t gid)
      * termination signals.
      */
     sigemptyset(&signal_set);
-    sigaddset(&signal_set, SIGCHLD);
-    sigaddset(&signal_set, SIGTSTP);
-    sigaddset(&signal_set, SIGTTOU);
-    sigaddset(&signal_set, SIGTTIN);
+    set_unwanted_signals(&signal_set);
+    sigaddset(&signal_set, SIGINT);
+    sigaddset(&signal_set, SIGTERM);
     sigprocmask(SIG_BLOCK, &signal_set, NULL);
 
     signal_action.sa_handler = signal_handler;
@@ -768,7 +813,7 @@ static int daemonize(uid_t uid, gid_t gid)
      * Set up the init pipe for coordinating daemon init with main process
      * return.
      */
-    if (pipe(init_pipe_fds) < 0) {
+    if (foreground == 0 && pipe(init_pipe_fds) < 0) {
         fprintf(stderr, "Failed to create init pipe: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
@@ -776,33 +821,35 @@ static int daemonize(uid_t uid, gid_t gid)
     pipe_read_fd = init_pipe_fds[0];
     pipe_write_fd = init_pipe_fds[1];
 
-    pid = fork();
-    if (pid < 0) {
-        fprintf(stderr, "Failed to fork() daemon: %s", strerror(errno));
-        goto shutdown;
-    }
-    else if (pid > 0) {
-        NvPdStatus init_status;
+    if (foreground == 0) {
+        pid = fork();
+        if (pid < 0) {
+            fprintf(stderr, "Failed to fork() daemon: %s", strerror(errno));
+            goto shutdown;
+        }
+        else if (pid > 0) {
+            NvPdStatus init_status;
 
-        /*
-         * Close the write end of the pipe so we don't block if the child dies
-         * or otherwise closes its write fd before it sends the init message.
-         */
-        close(pipe_write_fd);
+            /*
+             * Close the write end of the pipe so we don't block if the child dies
+             * or otherwise closes its write fd before it sends the init message.
+             */
+            close(pipe_write_fd);
 
-        /*
-         * Watch the init pipe for the child process to init, then exit the
-         * parent process.
-         */
-        init_status = wait_for_init_complete(pipe_read_fd);
-        exit((init_status == NVPD_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE);
+            /*
+             * Watch the init pipe for the child process to init, then exit the
+             * parent process.
+             */
+            init_status = wait_for_init_complete(pipe_read_fd);
+            exit((init_status == NVPD_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE);
+        }
     }
 
     /* Reset default file permissions */
     umask(0);
 
     /* Create a new session for the daemon */
-    if (setsid() < 0) {
+    if (foreground == 0 && setsid() < 0) {
         fprintf(stderr, "Failed to create new daemon session: %s",
                 strerror(errno));
         goto shutdown;
@@ -812,12 +859,14 @@ static int daemonize(uid_t uid, gid_t gid)
     pid = getpid();
 
     /* Close the standard file descriptors */
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
+    if (foreground == 0) {
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
 
-    /* Close the read end of the init pipe */
-    close(pipe_read_fd);
+        /* Close the read end of the init pipe */
+        close(pipe_read_fd);
+    }
 
     if (verbose) {
         log_mask = LOG_UPTO(LOG_DEBUG);
@@ -924,7 +973,9 @@ static int daemonize(uid_t uid, gid_t gid)
     return pipe_write_fd;
 
 shutdown:
-    close(pipe_write_fd);
+    if (foreground == 0) {
+        close(pipe_write_fd);
+    }
 
     /*
      * If we get this far but have an error condition, we need to cleanup
@@ -934,6 +985,69 @@ shutdown:
 
     /* Unreachable */
     return -1;
+}
+
+/*
+ * run() - This is a modified version of svc_run() that allows us to
+ * listen for signals.
+ */
+NvPdStatus run()
+{
+    /*
+     * NOTE:
+     * From https://docs-archive.freebsd.org/44doc/psd/23.rpc/paper.pdf
+     *
+     * "
+     * You can bypass svc_run() and call svc_getreqset() yourself.
+     * All you need to know are the file descriptors of the socket(s)
+     * associated with the programs you are waiting on. Thus you can
+     * have your own select() that waits on both the RPC socket, and
+     * your own descriptors. Note that svc_fds() is a bit mask of all
+     * the file descriptors that RPC is using for services. It can
+     * change everytime that any RPC library routine is called, because
+     * descriptors are constantly being opened and closed, for example
+     * for TCP connections.
+     * "
+     */
+
+    /*
+     * Create a signal set with all our blocked signals *except*
+     * the ones that will stop us (e.g. INT, TERM). pselect
+     * will then unblock anything _not_ in this set, allowing us
+     * to detect when we've been signalled...
+     */
+    sigset_t signal_set;
+    sigemptyset(&signal_set);
+    set_unwanted_signals(&signal_set);
+
+    fd_set readfds;
+    int dtbsz = getdtablesize();
+
+    for (;;) {
+        /*
+         * svc_fdset is global and can change in response to RPC activity,
+         * so we can't take its address directly in pselect...
+         */
+        readfds = svc_fdset;
+        switch (pselect(dtbsz, &readfds, NULL,NULL,NULL, &signal_set)) {
+        case -1:
+            if (errno != EINTR)
+                return NVPD_ERR_RPC;
+
+            /* Check if we've been signalled... */
+            if (signal_received)
+                return NVPD_SUCCESS;
+
+            break;
+        case 0:
+            break;
+        default:
+            /* We've received RPC activity. Process it. */
+            svc_getreqset(&readfds);
+        }
+    }
+
+    return NVPD_SUCCESS;
 }
 
 int main(int argc, char* argv[])
@@ -948,7 +1062,11 @@ int main(int argc, char* argv[])
         set_uvm_pm = NV_UVM_PERSISTENCE_MODE_ENABLED;
     }
 
-    pipe_write_fd = daemonize(options.uid, options.gid);
+    /*
+     * will return an unusable descriptor if asked to run in foreground. It
+     * shouldn't be needed as we're not going to be sending messages to it.
+     */
+    pipe_write_fd = init_daemon(options.uid, options.gid, options.foreground);
 
     /* Only the daemon process reaches this point */
     status = setup_nvidia_cfg_api(options.nvidia_cfg_path);
@@ -966,19 +1084,21 @@ int main(int argc, char* argv[])
         goto shutdown;
     }
 
-    status = init_complete(pipe_write_fd);
+    if (options.foreground == 0) {
+        status = init_complete(pipe_write_fd);
+    }
+
     if (status != NVPD_SUCCESS) {
         goto shutdown;
     }
 
-    svc_run();
-
-    /* We should never return from svc_run() in a non-error scenario */
-    syslog(LOG_ERR, "Failed to start local RPC service");
+    status = run();
 
 shutdown:
-    close(pipe_write_fd);
-    shutdown_daemon(EXIT_FAILURE);
+    if (options.foreground == 0) {
+        close(pipe_write_fd);
+    }
+    shutdown_daemon(status == NVPD_SUCCESS ? EXIT_SUCCESS : EXIT_FAILURE);
 
     return 0;
 }
