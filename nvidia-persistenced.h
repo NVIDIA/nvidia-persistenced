@@ -40,6 +40,7 @@ typedef struct {
     int verbose;
     uid_t uid;
     gid_t gid;
+    int foreground;
 } NvPdOptions;
 
 /* Command Implementations */

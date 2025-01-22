@@ -111,5 +111,13 @@ static const NVGetoptOption __options[] = {
       "nvidia-persistenced where to look for this library (in case it cannot "
       "find it on its own). This option should normally not be needed." },
 
+    { "foreground",
+      'f',
+      NVGETOPT_HELP_ALWAYS,
+      NULL,
+      "Runs the process in the foreground instead of detaching. This is "
+      "useful for init systems that can't natively supervise processes "
+      "that detach themselves (e.g. runit)."},
+
     { NULL, 0, 0, NULL, NULL },
 };
