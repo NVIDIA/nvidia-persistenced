@@ -96,10 +96,13 @@ static const NVGetoptOption __options[] = {
       UVM_PERSISTENCE_MODE_OPTION,
       NVGETOPT_IS_BOOLEAN | NVGETOPT_HELP_ALWAYS,
       NULL,
-      "UVM persistence mode is only supported on the single GPU confidential "
-      "computing configuration. By default, nvidia-persistenced starts with UVM "
+      "By default, nvidia-persistenced starts with UVM "
       "persistence mode disabled for all devices. Use '--uvm-persistence-mode' "
-      "to force UVM persistence mode on for supported devices on startup." },
+      "to force UVM persistence mode on for supported devices on startup."
+      "When UVM persistence mode is enabled, a GPU cannot enter the"
+      "PCI-Express Runtime D3 (RTD3) low-power state. Please refer to the"
+      "NVIDIA Accelerated Linux Graphics Driver README chapter on"
+      "PCI-Express Runtime D3 (RTD3) Power Management" },
 
     { "nvidia-cfg-path",
       NVIDIA_CFG_PATH_OPTION,
