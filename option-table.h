@@ -102,7 +102,9 @@ static const NVGetoptOption __options[] = {
       "When UVM persistence mode is enabled, a GPU cannot enter the"
       "PCI-Express Runtime D3 (RTD3) low-power state. Please refer to the"
       "NVIDIA Accelerated Linux Graphics Driver README chapter on"
-      "PCI-Express Runtime D3 (RTD3) Power Management" },
+      "PCI-Express Runtime D3 (RTD3) Power Management. "
+      "Enabling UVM persistence mode may result in additional GPU memory "
+      "usage being reported, even when no applications are running."},
 
     { "nvidia-cfg-path",
       NVIDIA_CFG_PATH_OPTION,
