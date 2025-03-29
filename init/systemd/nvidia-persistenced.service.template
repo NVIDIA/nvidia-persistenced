@@ -26,7 +26,6 @@
 
 [Unit]
 Description=NVIDIA Persistence Daemon
-Wants=syslog.target
 
 [Service]
 Type=forking
