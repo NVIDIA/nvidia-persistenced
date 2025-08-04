@@ -2,7 +2,7 @@
  * nvidia-persistenced: A daemon for maintaining persistent driver state,
  * specifically for use by the NVIDIA Linux driver.
  *
- * Copyright (C) 2013-2018 NVIDIA Corporation
+ * Copyright (C) 2013-2025 NVIDIA Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -56,7 +56,7 @@ static void print_version(void)
     nv_info_msg(TAB, "A tool for maintaining persistent driver state, "
                      "specifically for use by the NVIDIA Linux driver.");
     nv_info_msg(NULL, "");
-    nv_info_msg(TAB, "Copyright (C) 2013-2018 NVIDIA Corporation.");
+    nv_info_msg(TAB, "Copyright (C) 2013-2025 NVIDIA Corporation.");
     nv_info_msg(NULL, "");
 }
 

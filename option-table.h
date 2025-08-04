@@ -2,7 +2,7 @@
  * nvidia-persistenced: A daemon for maintaining persistent driver state,
  * specifically for use by the NVIDIA Linux driver.
  *
- * Copyright (C) 2013-2016 NVIDIA Corporation
+ * Copyright (C) 2013-2025 NVIDIA Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -98,10 +98,10 @@ static const NVGetoptOption __options[] = {
       NULL,
       "By default, nvidia-persistenced starts with UVM "
       "persistence mode disabled for all devices. Use '--uvm-persistence-mode' "
-      "to force UVM persistence mode on for supported devices on startup."
-      "When UVM persistence mode is enabled, a GPU cannot enter the"
-      "PCI-Express Runtime D3 (RTD3) low-power state. Please refer to the"
-      "NVIDIA Accelerated Linux Graphics Driver README chapter on"
+      "to force UVM persistence mode for supported devices on startup. "
+      "When UVM persistence mode is enabled, a GPU cannot enter the "
+      "PCI-Express Runtime D3 low-power state. Refer to the "
+      "NVIDIA Accelerated Linux Graphics Driver README chapter on "
       "PCI-Express Runtime D3 (RTD3) Power Management. "
       "Enabling UVM persistence mode may result in additional GPU memory "
       "usage being reported, even when no applications are running."},

@@ -1,7 +1,7 @@
 /*
  * nvidia-cfg
  *
- * Copyright (c) 2004  NVIDIA Corp.  All rights reserved.
+ * Copyright (c) 2004-2025  NVIDIA Corp.  All rights reserved.
  *
  * NOTICE TO USER:   The source code  is copyrighted under  U.S. and
  * international laws. NVIDIA, Corp. of Santa Clara, California owns
@@ -15,7 +15,7 @@
  * tion and  internal comments to the code,  notices to the end user
  * as follows:
  *
- * Copyright (c) 2004 NVIDIA Corp.  NVIDIA design patents pending in
+ * Copyright (c) 2004-2025 NVIDIA Corp.  NVIDIA design patents pending in
  * the U.S. and foreign countries.
  *
  * NVIDIA CORP.  MAKES  NO REPRESENTATION  ABOUT  THE SUITABILITY OF
@@ -164,6 +164,16 @@ typedef enum {
     NVCFG_TRUE = 1,
     NVCFG_FALSE = 0,
 } NvCfgBool;
+
+
+
+/*
+ * NvCfgProgressTickCallbackProc - callback function type for reporting
+ * progress on firmware flashing. progress is a float value between 0.0
+ * and 1.0. reset is a NvCfgBool that is NVCFG_TRUE if the flash operation
+ * is being reset.
+ */
+typedef void (*NvCfgProgressTickCallbackProc)(float progress, NvCfgBool reset);
 
 
 
@@ -444,6 +454,18 @@ int nvCfgGetGSyncDeviceFirmwareMinorVersion(NvCfgGSyncHandle handle);
 NvCfgBool nvCfgFlashGSyncDevice(NvCfgGSyncHandle handle, int format,
                                 const unsigned char *newFirmwareImage,
                                 int size);
+
+
+/*
+ * nvCfgFlashGSyncDeviceWithProgress() - extended version of nvCfgFlashGSyncDevice()
+ * that allows for progress callback during firmware flashing. The progressCallback
+ * function is called periodically during the flash operation to report
+ * progress.
+ */
+
+NvCfgBool nvCfgFlashGSyncDeviceWithProgress(NvCfgGSyncHandle handle, int format,
+                                            const unsigned char *newFirmwareImage, int size,
+                                            NvCfgProgressTickCallbackProc progressCallback);
 
 
 /*
