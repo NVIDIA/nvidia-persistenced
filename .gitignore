@@ -1,0 +1,16 @@
+# generated files
+_out
+#	just in case:
+*.o
+*.d
+*.orig
+*.orig.*
+*.bak
+*.sav
+.*.swp
+*.DS_Store
+*~
+.nfs*
+*.tmp
+*.rej
+core
