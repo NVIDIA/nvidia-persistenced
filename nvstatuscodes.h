@@ -165,6 +165,7 @@ NV_STATUS_CODE(NV_ERR_FABRIC_STATE_OUT_OF_SYNC,        0x00000087, "NVLink fabri
 NV_STATUS_CODE(NV_ERR_BUFFER_FULL,                     0x00000088, "Buffer is full")
 NV_STATUS_CODE(NV_ERR_BUFFER_EMPTY,                    0x00000089, "Buffer is empty")
 NV_STATUS_CODE(NV_ERR_MC_FLA_OFFSET_TABLE_FULL,        0x0000008A, "Multicast FLA offset table has no available slots")
+NV_STATUS_CODE(NV_ERR_DMA_XFER_FAILED,                 0x0000008B, "DMA transfer failed")
 
 // Warnings:
 NV_STATUS_CODE(NV_WARN_HOT_SWITCH,                     0x00010001, "WARNING Hot switch")
