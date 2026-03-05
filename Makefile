@@ -2,7 +2,7 @@
 # nvidia-persistenced: A daemon for maintaining persistent driver state,
 # specifically for use by the NVIDIA Linux driver.
 #
-# Copyright (C) 2013 NVIDIA Corporation
+# Copyright (C) 2013-2025 NVIDIA Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -94,7 +94,7 @@ common_cflags += -I $(OUTPUTDIR)
 common_cflags += -I .
 
 common_cflags += -DPROGRAM_NAME=\"$(NVIDIA_PERSISTENCED_PROGRAM_NAME)\"
-common_cflags += -D_BSD_SOURCE
+common_cflags += -D_DEFAULT_SOURCE
 common_cflags += -D_XOPEN_SOURCE=500
 common_cflags += -std=c99
 
@@ -105,13 +105,15 @@ ifneq ($(TARGET_OS),FreeBSD)
   LIBS += -ldl
 endif
 
-USE_TIRPC ?= $(shell $(PKG_CONFIG) --atleast-version=1.0.1 libtirpc && echo 1)
+HAS_TIRPC ?= $(shell $(PKG_CONFIG) --atleast-version=1.0.1 libtirpc && echo 1)
 
-ifeq ($(USE_TIRPC),1)
+ifeq ($(HAS_TIRPC),1)
   TIRPC_LDFLAGS ?= $(shell $(PKG_CONFIG) --libs libtirpc)
   TIRPC_CFLAGS ?= $(shell $(PKG_CONFIG) --cflags libtirpc)
   $(call BUILD_OBJECT_LIST,$(SRC)): CFLAGS += $(TIRPC_CFLAGS)
   LIBS += $(TIRPC_LDFLAGS)
+else
+  $(error libtirpc version 1.0.1 or newer required)
 endif
 
 ##############################################################################
