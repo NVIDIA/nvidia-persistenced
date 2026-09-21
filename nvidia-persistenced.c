@@ -28,6 +28,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -924,6 +925,12 @@ static int daemonize(uid_t uid, gid_t gid)
         if (chown(NVPD_VAR_RUNTIME_DATA_PATH, uid, gid) < 0) {
             syslog(LOG_ERR, "Failed to change ownership of %s: %s",
                    NVPD_VAR_RUNTIME_DATA_PATH, strerror(errno));
+            goto shutdown;
+        }
+
+        if (setgroups(0, NULL) < 0) {
+            syslog(LOG_ERR, "Failed to drop supplementary groups: %s",
+                   strerror(errno));
             goto shutdown;
         }
 
