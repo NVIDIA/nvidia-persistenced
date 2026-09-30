@@ -37,4 +37,5 @@ COMMON_UTILS_EXTRA_DIST += nvpci-utils.h
 # when building the utility's gen-manpage-opts
 COMMON_UTILS_EXTRA_DIST += gen-manpage-opts-helper.c
 COMMON_UTILS_EXTRA_DIST += gen-manpage-opts-helper.h
+COMMON_UTILS_EXTRA_DIST += dirname_test.c
 
