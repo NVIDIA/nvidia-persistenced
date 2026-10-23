@@ -187,7 +187,7 @@ void parse_options(int argc, char *argv[], NvPdOptions *options)
             default:
                 nv_error_msg("Invalid commandline, please run `%s --help` for "
                              "usage information.", argv[0]);
-                exit(EXIT_SUCCESS);
+                exit(EXIT_FAILURE);
         }
     }
 }
