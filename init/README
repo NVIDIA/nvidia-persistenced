@@ -31,6 +31,22 @@ The final installable configuration files and scripts are simply copies of
 the template files with the "__USER__" string replaced with the actual
 username.
 
+A systemd-sysusers fragment template is also provided in:
+
+  systemd/sysusers.d/nvidia-persistenced.conf.template
+
+When install.sh runs, it generates a sysusers.d fragment from this template
+(replacing __USER__ with the specified username). During installation, if
+systemd-sysusers is available on the system, the fragment is installed to
+/usr/lib/sysusers.d/ and systemd-sysusers is invoked to create the user and
+group. If systemd-sysusers is not available, install.sh falls back to the
+traditional useradd path.
+
+Distro package maintainers may also use the generated sysusers.d fragment
+directly: install it to /usr/lib/sysusers.d/nvidia-persistenced.conf in the
+package, and systemd-sysusers will create the required user and group
+automatically during package installation or at boot time.
+
 The install.sh script will check for init systems in the following order:
 
 (1) systemd

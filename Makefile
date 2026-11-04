@@ -98,8 +98,15 @@ common_cflags += -D_DEFAULT_SOURCE
 common_cflags += -D_XOPEN_SOURCE=500
 common_cflags += -std=c99
 
+common_cflags += -fstack-protector-strong
+common_cflags += -fstack-clash-protection
+common_cflags += $(if $(DEBUG), ,-O2 -D_FORTIFY_SOURCE=2)
+common_cflags += -fPIE
+
 CFLAGS += $(common_cflags)
 HOST_CFLAGS += $(common_cflags)
+
+LDFLAGS += -pie -Wl,-z,relro,-z,now
 
 ifneq ($(TARGET_OS),FreeBSD)
   LIBS += -ldl

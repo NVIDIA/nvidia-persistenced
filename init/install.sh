@@ -190,28 +190,12 @@ isNvpdRunning()
 checkCommon()
 {
     common_supported=1
+    has_useradd=0
+    has_sysusers=0
 
     printf "\nChecking for common requirements...\n"
     printf "  sed found in PATH?  "
     $(which sed >/dev/null 2>&1)
-    if [ "$?" = "0" ]; then
-        printf "Yes\n"
-    else
-        printf "No\n"
-        common_supported=0
-    fi
-
-    printf "  useradd found in PATH?  "
-    $(which useradd >/dev/null 2>&1)
-    if [ "$?" = "0" ]; then
-        printf "Yes\n"
-    else
-        printf "No\n"
-        common_supported=0
-    fi
-
-    printf "  userdel found in PATH?  "
-    $(which userdel >/dev/null 2>&1)
     if [ "$?" = "0" ]; then
         printf "Yes\n"
     else
@@ -228,6 +212,37 @@ checkCommon()
         common_supported=0
     fi
 
+    printf "  systemd-sysusers found in PATH?  "
+    $(which systemd-sysusers >/dev/null 2>&1)
+    if [ "$?" = "0" ]; then
+        printf "Yes\n"
+        has_sysusers=1
+    else
+        printf "No\n"
+    fi
+
+    printf "  useradd found in PATH?  "
+    $(which useradd >/dev/null 2>&1)
+    if [ "$?" = "0" ]; then
+        printf "Yes\n"
+        has_useradd=1
+    else
+        printf "No\n"
+    fi
+
+    printf "  userdel found in PATH?  "
+    $(which userdel >/dev/null 2>&1)
+    if [ "$?" = "0" ]; then
+        printf "Yes\n"
+    else
+        printf "No\n"
+        has_useradd=0
+    fi
+
+    if [ "$has_sysusers" = "0" ] && [ "$has_useradd" = "0" ]; then
+        common_supported=0
+    fi
+
     if [ "$common_supported" = "1" ]; then
         printf "Common installation/uninstallation supported\n\n"
     else
@@ -235,9 +250,85 @@ checkCommon()
     fi
 }
 
+# sysusers_conf_template is the path to the sysusers.d fragment template,
+# relative to the directory from which install.sh is run (i.e. inside the
+# extracted init tarball).
+sysusers_conf_template="systemd/sysusers.d/nvidia-persistenced.conf.template"
+
+# sysusers_conf is the generated (non-template) sysusers.d fragment, created
+# alongside the template after __USER__ substitution.
+sysusers_conf="systemd/sysusers.d/nvidia-persistenced.conf"
+
+# sysusers_conf_dst is the system path where the sysusers.d fragment is
+# installed so that systemd-sysusers can process it on future boots.
+sysusers_conf_dst="/usr/lib/sysusers.d/nvidia-persistenced.conf"
+
+# createSysusersConf() - fills in the sysusers.d template with the specified
+# user, similar to how createSystemdService() fills in the service template.
+#
+# $1 - user to create the sysusers.d fragment for
+# $2 - group to create the sysusers.d fragment for
+createSysusersConf()
+{
+    [ -f "$sysusers_conf_template" ] || return
+
+    if [ -f "$sysusers_conf" ]; then
+        nvpdCommand "Removing previous sample sysusers.d fragment" \
+                    "rm -f '$sysusers_conf'" ""
+    fi
+
+    if [ "$2" = "$1" ]; then
+        group_field="-"
+    else
+        group_field="-:$2"
+    fi
+
+    nvpdCommand "Creating sample sysusers.d fragment" \
+                "sed -e 's/__USER__/$1/g' -e 's/__GROUP_FIELD__/$group_field/g' '$sysusers_conf_template' > '$sysusers_conf'" \
+                ""
+}
+
+# installSysusersConf() - installs the generated sysusers.d fragment to the
+# system directory and invokes systemd-sysusers to create the user/group
+# immediately.
+#
+# Returns 0 if the user was created via sysusers, 1 if sysusers is
+# unavailable or not applicable.
+installSysusersConf()
+{
+    if [ ! -f "$sysusers_conf" ]; then
+        return 1
+    fi
+
+    if [ ! -d "$(dirname $sysusers_conf_dst)" ]; then
+        printf "$(dirname $sysusers_conf_dst) does not exist, skipping sysusers.d install.\n"
+        return 1
+    fi
+
+    if ! $(which systemd-sysusers >/dev/null 2>&1); then
+        printf "systemd-sysusers not found in PATH, skipping sysusers.d install.\n"
+        return 1
+    fi
+
+    nvpdCommand "Installing sysusers.d fragment to $sysusers_conf_dst" \
+                "cp '$sysusers_conf' '$sysusers_conf_dst'" \
+                "rm -f '$sysusers_conf_dst'"
+
+    nvpdCommand "Creating user/group via systemd-sysusers" \
+                "systemd-sysusers '$sysusers_conf_dst'" \
+                ""
+
+    return 0
+}
+
 # installCommon() - performs common installation steps required by all init
 # systems, such as creating a user for the NVIDIA Persistence Daemon to run
 # as.
+#
+# If a sysusers.d fragment has been generated and systemd-sysusers is present
+# on the system, the fragment is installed and systemd-sysusers is invoked to
+# create the user/group (including custom groups).  Otherwise, the traditional
+# useradd path is used as a fallback.
 #
 # If the user already exists, this will skip the step of creating the user.
 #
@@ -247,15 +338,21 @@ installCommon()
 {
     $(id $1 > /dev/null 2>&1)
     if [ "$?" -ne "0" ]; then
-        group_opt=""
-        if [ "$1" != "$2" ]; then
-            group_opt="-g $2"
+        if installSysusersConf; then
+            printf "User '$1' created via systemd-sysusers.\n"
+        elif $(which useradd >/dev/null 2>&1); then
+            group_opt=""
+            if [ "$1" != "$2" ]; then
+                group_opt="-g $2"
+            fi
+            nvpdCommand "Adding user '$1'" \
+                        "useradd $group_opt -s /sbin/nologin -d '/' -c 'NVIDIA Persistence Daemon' -r $1" \
+                        "userdel -f $1"
+        else
+            nvpdError "Failed to create user '$1': neither systemd-sysusers nor useradd succeeded"
         fi
-        nvpdCommand "Adding user '$1' to group '$2'" \
-                    "useradd $group_opt -s /sbin/nologin -d '/' -c 'NVIDIA Persistence Daemon' -r $1" \
-                    "userdel -f $1"
     else
-        printf "User '$1' already exists, skipping useradd...\n"
+        printf "User '$1' already exists, skipping user creation...\n"
         primary_group="$(id -ng $1 2>&1)"
         $(echo "$primary_group" | grep "$2" >/dev/null 2>&1)
         if [ "$?" = "0" ]; then
@@ -268,14 +365,24 @@ installCommon()
 
 # uninstallCommon() - performs common uninstallation steps required by all
 # init systems, such as deleting the user created for the NVIDIA Persistence
-# Daemon.
+# Daemon and removing any installed sysusers.d fragment.
 #
 # $1 - username of the user to delete, or empty to skip user deletion
 uninstallCommon()
 {
     if [ "$1" != "" ]; then
-        nvpdCommand "Deleting user '$1'" \
-                    "userdel -f $1" ""
+        if $(which userdel >/dev/null 2>&1); then
+            nvpdCommand "Deleting user '$1'" \
+                        "userdel -f $1" ""
+        else
+            printf "userdel not found in PATH, skipping user deletion.\n"
+            printf "User '$1' may need to be removed manually.\n"
+        fi
+    fi
+
+    if [ -f "$sysusers_conf_dst" ]; then
+        nvpdCommand "Removing sysusers.d fragment $sysusers_conf_dst" \
+                    "rm -f '$sysusers_conf_dst'" ""
     fi
 }
 
@@ -700,6 +807,7 @@ if [ "$uninstall" = "0" ]; then
     createSysVScript "$nvpd_user"
     createSystemdService "$nvpd_user"
     createUpstartService "$nvpd_user"
+    createSysusersConf "$nvpd_user" "$nvpd_group"
 fi
 
 # Select which targets to attempt

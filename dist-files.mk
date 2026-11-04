@@ -46,6 +46,7 @@ SAMPLE_FILES += init/install.sh
 SAMPLE_FILES += init/systemd/nvidia-persistenced.service.template
 SAMPLE_FILES += init/sysv/nvidia-persistenced.template
 SAMPLE_FILES += init/upstart/nvidia-persistenced.conf.template
+SAMPLE_FILES += init/systemd/sysusers.d/nvidia-persistenced.conf.template
 
 # Other distributed files
 DIST_FILES := $(SRC)
