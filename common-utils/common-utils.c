@@ -645,6 +645,9 @@ char *nv_dirname(const char *path)
 {
     char *last_slash = strrchr(path, '/');
     if (last_slash) {
+        if (last_slash == path) {
+            return nvstrdup("/");
+        }
         return nvstrndup(path, last_slash - path);
     } else {
         return nvstrdup(".");
